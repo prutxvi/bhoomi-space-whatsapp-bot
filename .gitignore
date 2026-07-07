@@ -3,5 +3,6 @@ auth_info/
 node_modules/
 bot.log
 qr.txt
+memory.json
 *.log
 .DS_Store

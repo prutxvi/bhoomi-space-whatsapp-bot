@@ -30,7 +30,13 @@ RULES:
 - Do NOT handle booking details yourself — just ask for name when they agree, and the system will handle the rest.`;
 
 let conversationMemory = new Map();
+const MEMORY_FILE = __dirname + '/memory.json';
+try { const saved = JSON.parse(fs.readFileSync(MEMORY_FILE, 'utf8')); conversationMemory = new Map(Object.entries(saved)); } catch(e) {}
 const AGENT_JID = process.env.AGENT_NUMBER || '';
+
+function saveMemory() {
+  fs.writeFileSync(MEMORY_FILE, JSON.stringify(Object.fromEntries(conversationMemory)));
+}
 
 async function getAIReply(userMessage) {
   try {
@@ -150,11 +156,13 @@ Our agent will confirm the slot shortly. See you at the site!`;
         conv.step = 0;
         conv.data = {};
         conversationMemory.set(sender, conv);
+        saveMemory();
         await sock.sendMessage(sender, { text: reply });
         return;
       }
 
       conversationMemory.set(sender, conv);
+      saveMemory();
       await sock.sendMessage(sender, { text: reply });
       return;
     }
@@ -168,6 +176,7 @@ Our agent will confirm the slot shortly. See you at the site!`;
       conv.step = 0;
       conv.data = {};
       conversationMemory.set(sender, conv);
+      saveMemory();
       reply = `Great choice! Let me get this sorted for you. What's your name?`;
       await sock.sendMessage(sender, { text: reply });
       return;
