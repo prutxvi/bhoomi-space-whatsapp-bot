@@ -147,7 +147,7 @@ async function startBot() {
 We help you find the best apartments in Gachibowli, Kokapet, and Tellapur. 
 
 What are you looking for? Tell me your *budget* and *BHK* preference and I'll find the best options for you.`;
-      } else if (lower.includes('visit') || lower.includes('book')) {
+      } else if (lower.includes('visit') || lower.includes('book') || lower === 'yeah sure' || lower === 'yes' || lower === 'sure' || lower === 'ok' || lower === 'okay' || lower.includes('let\'s do') || lower.includes('let\'s go')) {
         reply = `✅ *Site Visit Booked!*
 
 Our agent will confirm your slot within 2 hours (9 AM — 7 PM).
