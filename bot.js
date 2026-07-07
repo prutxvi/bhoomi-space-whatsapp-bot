@@ -1,8 +1,10 @@
 require('dotenv').config();
 const { makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const QR = require('qrcode');
 const qrcode = require('qrcode-terminal');
 const { Groq } = require('groq-sdk');
 const pino = require('pino');
+const fs = require('fs');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -92,9 +94,11 @@ async function startBot() {
   sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
     if (qr && !qrShown) {
       qrShown = true;
+      fs.writeFileSync(__dirname + '/qr.txt', qr);
       console.log('\n' + '='.repeat(55));
       console.log('  SCAN THIS QR WITH YOUR WHATSAPP SPARE NUMBER');
       console.log('  WhatsApp -> Settings -> Linked Devices -> Link a Device');
+      console.log('  QR also saved to: qr.txt (for this terminal)');
       console.log('='.repeat(55) + '\n');
       qrcode.generate(qr, { small: false });
       console.log('\n' + '='.repeat(55));
