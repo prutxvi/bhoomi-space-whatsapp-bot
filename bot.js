@@ -38,6 +38,10 @@ function saveMemory() {
   fs.writeFileSync(MEMORY_FILE, JSON.stringify(Object.fromEntries(conversationMemory)));
 }
 
+async function sendMsg(sock, jid, msg) {
+  try { await sock.sendMessage(jid, msg); } catch (e) { console.log('Send error:', e.message); }
+}
+
 async function getAIReply(userMessage) {
   try {
     const completion = await groq.chat.completions.create({
@@ -136,7 +140,7 @@ async function startBot() {
 
         const leadMsg = `🔔 *New Booking!*\n👤 ${conv.data.name}\n📱 ${conv.data.phone}\n📅 ${conv.data.time}\n🏠 ${conv.data.property}\n📝 ${conv.data.notes || '—'}\n🕐 ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
         try {
-          await sock.sendMessage(AGENT_JID, { text: leadMsg });
+          try { await sock.sendMessage(AGENT_JID, { text: leadMsg }); } catch(e) {}
           console.log(`📤 Booking: ${conv.data.name} — ${phone}`);
         } catch (e) {
           console.log('Forward failed:', e.message);
@@ -157,13 +161,13 @@ Our agent will confirm the slot shortly. See you at the site!`;
         conv.data = {};
         conversationMemory.set(sender, conv);
         saveMemory();
-        await sock.sendMessage(sender, { text: reply });
+        await sendMsg(sock, sender, { text: reply });
         return;
       }
 
       conversationMemory.set(sender, conv);
       saveMemory();
-      await sock.sendMessage(sender, { text: reply });
+      await sendMsg(sock, sender, { text: reply });
       return;
     }
 
@@ -178,7 +182,7 @@ Our agent will confirm the slot shortly. See you at the site!`;
       conversationMemory.set(sender, conv);
       saveMemory();
       reply = `Great choice! Let me get this sorted for you. What's your name?`;
-      await sock.sendMessage(sender, { text: reply });
+      await sendMsg(sock, sender, { text: reply });
       return;
     }
 
@@ -201,7 +205,7 @@ Our agent will confirm the slot shortly. See you at the site!`;
       }
     }
 
-    await sock.sendMessage(sender, { text: reply });
+    await sendMsg(sock, sender, { text: reply });
     console.log(`✅ ${phone}: "${text.slice(0,35)}"`);
   });
 }
