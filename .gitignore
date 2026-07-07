@@ -2,5 +2,6 @@
 auth_info/
 node_modules/
 bot.log
+qr.txt
 *.log
 .DS_Store

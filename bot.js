@@ -132,9 +132,12 @@ async function startBot() {
     conv.count = (conv.count || 0) + 1;
     conversationMemory.set(sender, conv);
 
-    await sock.sendPresenceUpdate('composing', sender);
-
-    let reply = await getAIReply(text);
+    let reply = '';
+    try {
+      reply = await getAIReply(text);
+    } catch (e) {
+      console.log(`Groq error for ${phone}:`, e.message);
+    }
 
     if (!reply) {
       const lower = text.toLowerCase().trim();
