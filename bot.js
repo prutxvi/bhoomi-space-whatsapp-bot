@@ -33,6 +33,7 @@ CRITICAL RULES:
 - Always end with a question to keep conversation going.`;
 
 let conversationMemory = new Map();
+const AGENT_JID = process.env.AGENT_NUMBER || '';
 
 async function getAIReply(userMessage) {
   try {
@@ -49,6 +50,31 @@ async function getAIReply(userMessage) {
   } catch (e) {
     console.log('Groq API error:', e.message);
     return null;
+  }
+}
+
+function hasBuyingIntent(text) {
+  const lower = text.toLowerCase();
+  const buyingSignals = [
+    'visit', 'book', 'interested', 'call me', 'contact', 'send details',
+    'confirm', 'meet', 'come see', 'let\'s meet', 'my number', 'my phone',
+    'whatsapp me', 'reach me', 'call me at', 'contact me', 'schedule',
+    'brochure', 'price list', 'deal', 'buy', 'purchase', 'book slot',
+    'available today', 'want to see', 'show me', 'come to office'
+  ];
+  const phoneRegex = /[6-9]\d{9}/;
+  return buyingSignals.some(s => lower.includes(s)) || phoneRegex.test(text);
+}
+
+async function forwardLead(sock, sender, text, reply) {
+  if (!AGENT_JID) return;
+  const phone = sender.split('@')[0];
+  const msg = `🔔 *New Lead Alert!*\n\n📱 Lead: ${phone}\n💬 Said: "${text.slice(0, 100)}"\n🤖 Bot replied: "${reply.slice(0, 100)}"\n\n🕐 ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
+  try {
+    await sock.sendMessage(AGENT_JID, { text: msg });
+    console.log(`📤 Lead forwarded for ${phone}`);
+  } catch (e) {
+    console.log('Forward failed:', e.message);
   }
 }
 
@@ -97,6 +123,11 @@ async function startBot() {
     const sender = msg.key.remoteJid;
     if (!text) return;
 
+    const phone = sender.split('@')[0];
+    const conv = conversationMemory.get(sender) || { count: 0, lastIntent: false };
+    conv.count = (conv.count || 0) + 1;
+    conversationMemory.set(sender, conv);
+
     await sock.sendPresenceUpdate('composing', sender);
 
     let reply = await getAIReply(text);
@@ -137,7 +168,13 @@ Just tell me what you're looking for!`;
     }
 
     await sock.sendMessage(sender, { text: reply });
-    console.log(`✅ Replied to: ${sender.split('@')[0]} — "${text.slice(0,40)}"`);
+    console.log(`✅ Replied to: ${phone} — "${text.slice(0,40)}"`);
+
+    const intent = hasBuyingIntent(text);
+    if (intent || conv.count >= 4) {
+      await forwardLead(sock, sender, text, reply);
+      conversationMemory.set(sender, { count: conv.count, lastIntent: true, forwarded: true });
+    }
   });
 }
 
