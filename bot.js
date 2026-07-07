@@ -55,31 +55,6 @@ async function getAIReply(userMessage) {
   }
 }
 
-function hasBuyingIntent(text) {
-  const lower = text.toLowerCase();
-  const buyingSignals = [
-    'visit', 'book', 'interested', 'call me', 'contact', 'send details',
-    'confirm', 'meet', 'come see', 'let\'s meet', 'my number', 'my phone',
-    'whatsapp me', 'reach me', 'call me at', 'contact me', 'schedule',
-    'brochure', 'price list', 'deal', 'buy', 'purchase', 'book slot',
-    'available today', 'want to see', 'show me', 'come to office'
-  ];
-  const phoneRegex = /[6-9]\d{9}/;
-  return buyingSignals.some(s => lower.includes(s)) || phoneRegex.test(text);
-}
-
-async function forwardLead(sock, sender, text, reply) {
-  if (!AGENT_JID) return;
-  const phone = sender.split('@')[0];
-  const msg = `🔔 *New Lead Alert!*\n\n📱 Lead: ${phone}\n💬 Said: "${text.slice(0, 100)}"\n🤖 Bot replied: "${reply.slice(0, 100)}"\n\n🕐 ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
-  try {
-    await sock.sendMessage(AGENT_JID, { text: msg });
-    console.log(`📤 Lead forwarded for ${phone}`);
-  } catch (e) {
-    console.log('Forward failed:', e.message);
-  }
-}
-
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth_info');
   let qrShown = false;
@@ -128,11 +103,89 @@ async function startBot() {
     if (!text) return;
 
     const phone = sender.split('@')[0];
-    const conv = conversationMemory.get(sender) || { count: 0, lastIntent: false };
+    const conv = conversationMemory.get(sender) || { count: 0, flow: null, step: 0, data: {} };
     conv.count = (conv.count || 0) + 1;
     conversationMemory.set(sender, conv);
 
     let reply = '';
+
+    // --- Booking Flow ---
+    if (conv.flow === 'booking') {
+      if (conv.step === 0) {
+        conv.data.name = text.trim();
+        conv.step = 1;
+        reply = `Thanks, *${conv.data.name}*! 📱\n\nCould you share your *phone number* so our agent can reach you?`;
+      } else if (conv.step === 1) {
+        const cleaned = text.replace(/[^0-9]/g, '');
+        if (cleaned.length >= 10) {
+          conv.data.phone = cleaned.slice(-10);
+          conv.step = 2;
+          reply = `Great! What *date and time* would you prefer for the site visit? (e.g., "Tomorrow 4 PM" or "Saturday 11 AM")`;
+        } else {
+          reply = `Please share a valid *10-digit phone number* so our agent can reach you.`;
+        }
+      } else if (conv.step === 2) {
+        conv.data.time = text.trim();
+        conv.step = 3;
+        reply = `Which *property* are you interested in visiting? (e.g., Aparna Elita, Lodha Meridian, KNR Greenville, Prestige High Fields)`;
+      } else if (conv.step === 3) {
+        conv.data.property = text.trim();
+        conv.step = 4;
+        reply = `Almost done! Any *specific requirements* or *questions* for our agent? (Reply "none" to skip)`;
+      } else if (conv.step === 4) {
+        conv.data.notes = text.trim() === 'none' ? '' : text.trim();
+        
+        // Booking complete — forward to admin
+        const leadMsg = `🔔 *New Site Visit Booking!*\n\n👤 Name: ${conv.data.name}\n📱 Phone: ${conv.data.phone}\n📅 Preferred Time: ${conv.data.time}\n🏠 Property: ${conv.data.property}\n📝 Notes: ${conv.data.notes || 'None'}\n\n🕐 Booked at: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
+        
+        try {
+          await sock.sendMessage(AGENT_JID, { text: leadMsg });
+          console.log(`📤 Booking forwarded for ${phone}`);
+        } catch (e) {
+          console.log('Forward failed:', e.message);
+        }
+
+        reply = `✅ *Site Visit Booked Successfully!* 🎉
+
+Here's your booking summary:
+👤 *Name:* ${conv.data.name}
+📱 *Phone:* ${conv.data.phone}
+📅 *Preferred Time:* ${conv.data.time}
+🏠 *Property:* ${conv.data.property}
+
+Our agent will contact you shortly to confirm the slot. Thank you for choosing *Sri Sai Properties*! 🏡`;
+
+        // Reset booking flow
+        conv.flow = null;
+        conv.step = 0;
+        conv.data = {};
+        conversationMemory.set(sender, conv);
+        await sock.sendMessage(sender, { text: reply });
+        return;
+      }
+
+      conversationMemory.set(sender, conv);
+      await sock.sendMessage(sender, { text: reply });
+      return;
+    }
+
+    // --- Start Booking Flow ---
+    const lower = text.toLowerCase().trim();
+    const bookingTriggers = ['visit', 'book', 'yeah sure', 'yes', 'sure', 'ok', 'okay', "let's do", "let's go", 'book slot', 'book visit', 'schedule visit', 'want to see', 'show me'];
+
+    if (bookingTriggers.some(t => lower === t || lower.includes(t))) {
+      conv.flow = 'booking';
+      conv.step = 0;
+      conv.data = {};
+      conversationMemory.set(sender, conv);
+      reply = `🏡 *Great! Let's book your site visit.*
+
+First, what's your *name*?`;
+      await sock.sendMessage(sender, { text: reply });
+      return;
+    }
+
+    // --- Normal AI response ---
     try {
       reply = await getAIReply(text);
     } catch (e) {
@@ -140,19 +193,12 @@ async function startBot() {
     }
 
     if (!reply) {
-      const lower = text.toLowerCase().trim();
       if (['hi', 'hello', 'hey', 'namaste'].includes(lower)) {
         reply = `🏡 *Welcome to Sri Sai Properties!*
 
 We help you find the best apartments in Gachibowli, Kokapet, and Tellapur. 
 
 What are you looking for? Tell me your *budget* and *BHK* preference and I'll find the best options for you.`;
-      } else if (lower.includes('visit') || lower.includes('book') || lower === 'yeah sure' || lower === 'yes' || lower === 'sure' || lower === 'ok' || lower === 'okay' || lower.includes('let\'s do') || lower.includes('let\'s go')) {
-        reply = `✅ *Site Visit Booked!*
-
-Our agent will confirm your slot within 2 hours (9 AM — 7 PM).
-
-Thank you for choosing *Sri Sai Properties*! 🏡`;
       } else if (lower.includes('agent') || lower.includes('call') || lower.includes('talk')) {
         reply = `📞 An agent will reach out to you shortly.
 
@@ -176,12 +222,6 @@ Just tell me what you're looking for!`;
 
     await sock.sendMessage(sender, { text: reply });
     console.log(`✅ Replied to: ${phone} — "${text.slice(0,40)}"`);
-
-    const intent = hasBuyingIntent(text);
-    if (intent || conv.count >= 4) {
-      await forwardLead(sock, sender, text, reply);
-      conversationMemory.set(sender, { count: conv.count, lastIntent: true, forwarded: true });
-    }
   });
 }
 
