@@ -1,0 +1,6 @@
+.env
+auth_info/
+node_modules/
+bot.log
+*.log
+.DS_Store
