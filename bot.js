@@ -8,31 +8,26 @@ const fs = require('fs');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-const SYSTEM_PROMPT = `You are "Sri Sai Properties" WhatsApp bot — a sales-oriented real estate assistant in Hyderabad.
+const SYSTEM_PROMPT = `You are "Sri Sai Properties" — a sales-oriented real estate assistant in Hyderabad. Your goal is to engage prospects, suggest properties, and book site visits.
 
 AVAILABLE PROPERTIES:
 1. Aparna Elita — 2BHK, 1280 sqft, ₹89L, Ready to move, Gachibowli
-2. My Home Vihanga — 3BHK, 1650 sqft, ₹1.45Cr, Dec 2026 possession, Kokapet
+2. My Home Vihanga — 3BHK, 1650 sqft, ₹1.45Cr, Dec 2026, Kokapet
 3. Lodha Meridian — 2BHK, 1150 sqft, ₹78L, Ready to move, Tellapur
-4. Rajapushpa Provincia — 3BHK, 1800 sqft, ₹1.6Cr, Mar 2027 possession, Nallagandla
+4. Rajapushpa Provincia — 3BHK, 1800 sqft, ₹1.6Cr, Mar 2027, Nallagandla
 5. KNR Greenville — 2BHK, 1350 sqft, ₹92L, Ready to move, Gachibowli
 6. Godrej Ananda — 3BHK, 1725 sqft, ₹1.55Cr, Jun 2027, Kokapet
 7. Prestige High Fields — 2BHK, 1190 sqft, ₹82L, Ready to move, Tellapur
 
-CRITICAL RULES:
-- Keep replies concise. 3-4 lines max. Never write paragraphs.
-- NEVER offer to send images, brochures, PDFs, or photos — you CANNOT send files. Instead say: "I'll have our agent share the brochure on WhatsApp. Can I get your preferred contact number?"
-- Push for lead capture: After 2-3 exchanges, ask: "Should I share your details with our agent for a personalized consultation?"
-- Push for site visit: After suggesting properties, always ask: "Would you like to visit this weekend? I can book a slot."
-- If budget under ₹1Cr, suggest Aparna Elita, Lodha Meridian, KNR Greenville, Prestige High Fields.
-- If ₹1Cr-₹2Cr, suggest My Home Vihanga, Rajapushpa Provincia, Godrej Ananda.
-- If user asks about areas: Gachibowli has 2BHK options, Kokapet has premium 3BHK, Tellapur has affordable options.
-- If user wants a site visit: "✅ Booked! Our agent will confirm within 2 hours."
-- If user wants to talk to an agent: "📞 An agent will call you shortly. Please share your preferred time."
-- If user asks about investment: "Gachibowli corridor has seen 12-15% annual appreciation. Great time to invest."
-- Never share exact addresses. Always route bookings through an agent.
-- Sound like a helpful local agent. Be direct, knowledgeable, and sales-focused.
-- Always end with a question to keep conversation going.`;
+RULES:
+- Keep replies short and conversational. 2-3 lines max.
+- NEVER offer images or brochures. Say "I'll have our agent share those details."
+- After suggesting properties, ask: "Would you like to book a visit this weekend?"
+- If user agrees to visit, say: "Perfect! Let me note that down. What name should I put for the booking?"
+- If user asks about budget: suggest matching properties.
+- Sound like a friendly local Hyderabad agent. Use simple English.
+- Always end with a question to keep the conversation flowing.
+- Do NOT handle booking details yourself — just ask for name when they agree, and the system will handle the rest.`;
 
 let conversationMemory = new Map();
 const AGENT_JID = process.env.AGENT_NUMBER || '';
@@ -73,7 +68,6 @@ async function startBot() {
       console.log('\n' + '='.repeat(55));
       console.log('  SCAN THIS QR WITH YOUR WHATSAPP SPARE NUMBER');
       console.log('  WhatsApp -> Settings -> Linked Devices -> Link a Device');
-      console.log('  QR also saved to: qr.txt (for this terminal)');
       console.log('='.repeat(55) + '\n');
       qrcode.generate(qr, { small: false });
       console.log('\n' + '='.repeat(55));
@@ -81,7 +75,7 @@ async function startBot() {
       console.log('='.repeat(55) + '\n');
     }
     if (connection === 'open') {
-      console.log('\n✅ BOT IS LIVE! AI-powered WhatsApp bot connected.\n');
+      console.log('\n✅ BOT IS LIVE!\n');
     }
     if (connection === 'close') {
       const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
@@ -105,57 +99,53 @@ async function startBot() {
     const phone = sender.split('@')[0];
     const conv = conversationMemory.get(sender) || { count: 0, flow: null, step: 0, data: {} };
     conv.count = (conv.count || 0) + 1;
-    conversationMemory.set(sender, conv);
 
     let reply = '';
 
-    // --- Booking Flow ---
+    // --- Booking Flow (natural conversation) ---
     if (conv.flow === 'booking') {
       if (conv.step === 0) {
         conv.data.name = text.trim();
         conv.step = 1;
-        reply = `Thanks, *${conv.data.name}*! 📱\n\nCould you share your *phone number* so our agent can reach you?`;
+        reply = `Thanks ${conv.data.name}! And your phone number? So the agent can confirm the slot with you.`;
       } else if (conv.step === 1) {
         const cleaned = text.replace(/[^0-9]/g, '');
         if (cleaned.length >= 10) {
           conv.data.phone = cleaned.slice(-10);
           conv.step = 2;
-          reply = `Great! What *date and time* would you prefer for the site visit? (e.g., "Tomorrow 4 PM" or "Saturday 11 AM")`;
+          reply = `Perfect! When would work best for you? Morning, afternoon, or evening — and which day?`;
         } else {
-          reply = `Please share a valid *10-digit phone number* so our agent can reach you.`;
+          reply = `Sorry, could you share a 10-digit number so the agent can reach you?`;
         }
       } else if (conv.step === 2) {
         conv.data.time = text.trim();
         conv.step = 3;
-        reply = `Which *property* are you interested in visiting? (e.g., Aparna Elita, Lodha Meridian, KNR Greenville, Prestige High Fields)`;
+        reply = `Got it! And which property caught your interest? (Aparna Elita, Lodha Meridian, KNR Greenville, Prestige High Fields, or any other?)`;
       } else if (conv.step === 3) {
         conv.data.property = text.trim();
         conv.step = 4;
-        reply = `Almost done! Any *specific requirements* or *questions* for our agent? (Reply "none" to skip)`;
+        reply = `Anything specific you'd like the agent to know before the visit? Any questions? (Or just say "no" to skip)`;
       } else if (conv.step === 4) {
-        conv.data.notes = text.trim() === 'none' ? '' : text.trim();
-        
-        // Booking complete — forward to admin
-        const leadMsg = `🔔 *New Site Visit Booking!*\n\n👤 Name: ${conv.data.name}\n📱 Phone: ${conv.data.phone}\n📅 Preferred Time: ${conv.data.time}\n🏠 Property: ${conv.data.property}\n📝 Notes: ${conv.data.notes || 'None'}\n\n🕐 Booked at: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
-        
+        conv.data.notes = text.trim().toLowerCase() === 'no' || text.trim().toLowerCase() === 'none' ? '' : text.trim();
+
+        const leadMsg = `🔔 *New Booking!*\n👤 ${conv.data.name}\n📱 ${conv.data.phone}\n📅 ${conv.data.time}\n🏠 ${conv.data.property}\n📝 ${conv.data.notes || '—'}\n🕐 ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
         try {
           await sock.sendMessage(AGENT_JID, { text: leadMsg });
-          console.log(`📤 Booking forwarded for ${phone}`);
+          console.log(`📤 Booking: ${conv.data.name} — ${phone}`);
         } catch (e) {
           console.log('Forward failed:', e.message);
         }
 
-        reply = `✅ *Site Visit Booked Successfully!* 🎉
+        reply = `You're all set ${conv.data.name}! 🎉
 
-Here's your booking summary:
-👤 *Name:* ${conv.data.name}
-📱 *Phone:* ${conv.data.phone}
-📅 *Preferred Time:* ${conv.data.time}
-🏠 *Property:* ${conv.data.property}
+Here's what I've noted:
+👤 ${conv.data.name}
+📱 ${conv.data.phone}
+📅 ${conv.data.time}
+🏠 ${conv.data.property}
 
-Our agent will contact you shortly to confirm the slot. Thank you for choosing *Sri Sai Properties*! 🏡`;
+Our agent will confirm the slot shortly. See you at the site!`;
 
-        // Reset booking flow
         conv.flow = null;
         conv.step = 0;
         conv.data = {};
@@ -169,18 +159,16 @@ Our agent will contact you shortly to confirm the slot. Thank you for choosing *
       return;
     }
 
-    // --- Start Booking Flow ---
+    // --- Check if user wants to book ---
     const lower = text.toLowerCase().trim();
-    const bookingTriggers = ['visit', 'book', 'yeah sure', 'yes', 'sure', 'ok', 'okay', "let's do", "let's go", 'book slot', 'book visit', 'schedule visit', 'want to see', 'show me'];
+    const triggers = ['visit', 'book', 'yeah sure', 'yes', 'sure', 'ok', 'okay', "let's do", "let's go", 'want to see', 'show me', 'book slot', 'book visit', 'schedule visit', 'i\'m interested', 'sounds good', 'let\'s book'];
 
-    if (bookingTriggers.some(t => lower === t || lower.includes(t))) {
+    if (triggers.some(t => lower === t || lower.includes(t))) {
       conv.flow = 'booking';
       conv.step = 0;
       conv.data = {};
       conversationMemory.set(sender, conv);
-      reply = `🏡 *Great! Let's book your site visit.*
-
-First, what's your *name*?`;
+      reply = `Great choice! Let me get this sorted for you. What's your name?`;
       await sock.sendMessage(sender, { text: reply });
       return;
     }
@@ -189,39 +177,23 @@ First, what's your *name*?`;
     try {
       reply = await getAIReply(text);
     } catch (e) {
-      console.log(`Groq error for ${phone}:`, e.message);
+      console.log(`Groq error: ${e.message}`);
     }
 
     if (!reply) {
       if (['hi', 'hello', 'hey', 'namaste'].includes(lower)) {
-        reply = `🏡 *Welcome to Sri Sai Properties!*
-
-We help you find the best apartments in Gachibowli, Kokapet, and Tellapur. 
-
-What are you looking for? Tell me your *budget* and *BHK* preference and I'll find the best options for you.`;
+        reply = `Hey! Welcome to Sri Sai Properties. Looking for a home in Hyderabad? Tell me your budget and I'll find the best options for you.`;
       } else if (lower.includes('agent') || lower.includes('call') || lower.includes('talk')) {
-        reply = `📞 An agent will reach out to you shortly.
-
-For urgent inquiries, you can expect a call within 30 minutes during business hours.`;
+        reply = `Sure, an agent will call you shortly. Please share your preferred time if any.`;
       } else if (lower.includes('thank')) {
-        reply = `You're welcome! 😊 Feel free to ask if you have any more questions.
-
-We're here to help you find the perfect home.`;
+        reply = `You're welcome! Let me know if you have any more questions. Happy to help!`;
       } else {
-        reply = `Thanks for your message! 
-
-I can help you with:
-• Available properties in Gachibowli, Kokapet, Tellapur
-• Price ranges and BHK options
-• Site visit bookings
-• Investment guidance
-
-Just tell me what you're looking for!`;
+        reply = `I can help you find the perfect property in Gachibowli, Kokapet, or Tellapur. What's your budget range?`;
       }
     }
 
     await sock.sendMessage(sender, { text: reply });
-    console.log(`✅ Replied to: ${phone} — "${text.slice(0,40)}"`);
+    console.log(`✅ ${phone}: "${text.slice(0,35)}"`);
   });
 }
 
