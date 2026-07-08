@@ -5,6 +5,7 @@ const qrcode = require('qrcode-terminal');
 const { Groq } = require('groq-sdk');
 const pino = require('pino');
 const fs = require('fs');
+const http = require('http');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -91,7 +92,26 @@ async function startBot() {
       const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
       if (shouldReconnect) {
         qrShown = false;
-        startBot();
+startBot();
+
+// HTTP server for Railway — shows QR at the web URL
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+  if (req.url === '/qr') {
+    const qrFile = __dirname + '/qr.txt';
+    if (fs.existsSync(qrFile)) {
+      const qrData = fs.readFileSync(qrFile, 'utf8');
+      QR.toDataURL(qrData, (err, url) => {
+        if (err) { res.end('QR not ready'); return; }
+        res.writeHead(200, {'Content-Type': 'text/html'});
+        res.end(`<html><body style="background:#111;display:flex;justify-content:center;align-items:center;height:100vh"><img src="${url}" style="width:300px;height:300px"/><p style="color:white;text-align:center;position:absolute;bottom:50px">Scan this QR with WhatsApp → Linked Devices</p></body></html>`);
+      });
+    } else { res.end('Bot starting... QR not ready yet.'); }
+  } else {
+    res.writeHead(200, {'Content-Type': 'text/plain'});
+    res.end('WhatsApp Bot running. Visit /qr to scan.');
+  }
+}).listen(PORT, () => console.log(`Web server on port ${PORT}`));
       }
     }
   });
