@@ -101,10 +101,10 @@ http.createServer((req, res) => {
     const qrFile = __dirname + '/qr.txt';
     if (fs.existsSync(qrFile)) {
       const qrData = fs.readFileSync(qrFile, 'utf8');
-      QR.toDataURL(qrData, (err, url) => {
+      QR.toDataURL(qrData, { width: 180, margin: 1, color: { dark: '#000', light: '#fff' } }, (err, url) => {
         if (err) { res.end('QR not ready'); return; }
         res.writeHead(200, {'Content-Type': 'text/html'});
-        res.end(`<html><body style="background:#111;display:flex;justify-content:center;align-items:center;height:100vh"><img src="${url}" style="width:300px;height:300px"/><p style="color:white;text-align:center;position:absolute;bottom:50px">Scan this QR with WhatsApp → Linked Devices</p></body></html>`);
+        res.end(`<html><body style="background:#fff;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;flex-direction:column"><div style="border:4px solid #000;padding:10px;border-radius:8px;display:inline-block"><img src="${url}" style="width:180px;height:180px;display:block"/></div><p style="font-family:sans-serif;font-size:14px;color:#333;margin-top:15px">WhatsApp → Linked Devices → Scan</p></body></html>`);
       });
     } else { res.end('Bot starting... QR not ready yet.'); }
   } else {
