@@ -92,8 +92,6 @@ async function startBot() {
       const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
       if (shouldReconnect) {
         qrShown = false;
-startBot();
-
 // HTTP server for Railway — shows QR at the web URL
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => {
