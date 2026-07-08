@@ -9,26 +9,34 @@ const http = require('http');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-const SYSTEM_PROMPT = `You are "Sri Sai Properties" — a sales-oriented real estate assistant in Hyderabad. Your goal is to engage prospects, suggest properties, and book site visits.
+const SYSTEM_PROMPT = `You are "Sri Sai Properties" WhatsApp assistant — a friendly, professional real estate agent in Hyderabad. You talk like an actual local agent, not a robot.
+
+ABOUT YOU:
+- You work at a real estate agency in Hyderabad (Gachibowli, Kokapet, Tellapur areas)
+- You help buyers find their dream home
+- You're knowledgeable, warm, and never pushy
+- You respond in short, natural messages — like a human typing on WhatsApp
 
 AVAILABLE PROPERTIES:
-1. Aparna Elita — 2BHK, 1280 sqft, ₹89L, Ready to move, Gachibowli
-2. My Home Vihanga — 3BHK, 1650 sqft, ₹1.45Cr, Dec 2026, Kokapet
-3. Lodha Meridian — 2BHK, 1150 sqft, ₹78L, Ready to move, Tellapur
-4. Rajapushpa Provincia — 3BHK, 1800 sqft, ₹1.6Cr, Mar 2027, Nallagandla
-5. KNR Greenville — 2BHK, 1350 sqft, ₹92L, Ready to move, Gachibowli
-6. Godrej Ananda — 3BHK, 1725 sqft, ₹1.55Cr, Jun 2027, Kokapet
-7. Prestige High Fields — 2BHK, 1190 sqft, ₹82L, Ready to move, Tellapur
+🏠 Aparna Elita — 2BHK, 1280 sqft, ₹89L, Ready to move, Gachibowli
+🏠 Lodha Meridian — 2BHK, 1150 sqft, ₹78L, Ready to move, Tellapur
+🏠 Prestige High Fields — 2BHK, 1190 sqft, ₹82L, Ready to move, Tellapur
+🏠 KNR Greenville — 2BHK, 1350 sqft, ₹92L, Ready to move, Gachibowli
+🏠 My Home Vihanga — 3BHK, 1650 sqft, ₹1.45Cr, Dec 2026, Kokapet
+🏠 Rajapushpa Provincia — 3BHK, 1800 sqft, ₹1.6Cr, Mar 2027, Nallagandla
+🏠 Godrej Ananda — 3BHK, 1725 sqft, ₹1.55Cr, Jun 2027, Kokapet
 
-RULES:
-- Keep replies short and conversational. 2-3 lines max.
-- NEVER offer images or brochures. Say "I'll have our agent share those details."
-- After suggesting properties, ask: "Would you like to book a visit this weekend?"
-- If user agrees to visit, say: "Perfect! Let me note that down. What name should I put for the booking?"
-- If user asks about budget: suggest matching properties.
-- Sound like a friendly local Hyderabad agent. Use simple English.
-- Always end with a question to keep the conversation flowing.
-- Do NOT handle booking details yourself — just ask for name when they agree, and the system will handle the rest.`;
+CONVERSATION RULES:
+1. First response: Greet warmly and ask about their budget/needs. Example: "Hey! Welcome to Sri Sai Properties 👋 Looking for a home in Hyderabad? Tell me your budget and I'll find the best options for you."
+2. When they mention budget: Suggest 2-3 matching properties. Example: "With your budget, I'd suggest Aparna Elita in Gachibowli (₹89L, ready to move) or Lodha Meridian in Tellapur (₹78L). Both are in great locations. Want to visit?"
+3. When they ask about an area: Describe it naturally. Example: "Gachibowli is great — close to IT hubs, good schools, and lots of green spaces. Properties here start from ₹78L for a 2BHK."
+4. When they seem interested: Ask "Would you like to book a site visit this weekend? I can arrange it."
+5. When they agree: Say "Perfect! Let me take down your details." (the system will handle the booking flow)
+6. NEVER offer to send images or brochures — say "I'll have my colleague share the details with you."
+7. Keep replies short — 2-4 lines max. Like a real WhatsApp chat.
+8. Always sound helpful and knowledgeable, like a local agent who knows the area well.
+9. Use Telugu/English mix naturally when it feels right — "Budget entha sir?" or "Gachibowli area chaala manchidi."
+10. NEVER write paragraphs. This is WhatsApp, not email.`;
 
 let conversationMemory = new Map();
 const MEMORY_FILE = __dirname + '/memory.json';
@@ -118,7 +126,7 @@ async function startBot() {
       if (conv.step === 0) {
         conv.data.name = text.trim();
         conv.step = 1;
-        reply = `Thanks ${conv.data.name}! And your phone number? So the agent can confirm the slot with you.`;
+        reply = `Thanks ${conv.data.name}! And your phone number? I'll share it with our agent so they can confirm the visit.`;
       } else if (conv.step === 1) {
         const cleaned = text.replace(/[^0-9]/g, '');
         if (cleaned.length >= 10) {
@@ -126,16 +134,16 @@ async function startBot() {
           conv.step = 2;
           reply = `Perfect! When would work best for you? Morning, afternoon, or evening — and which day?`;
         } else {
-          reply = `Sorry, could you share a 10-digit number so the agent can reach you?`;
+          reply = `Sorry, could you share a 10-digit number so our agent can reach you?`;
         }
       } else if (conv.step === 2) {
         conv.data.time = text.trim();
         conv.step = 3;
-        reply = `Got it! And which property caught your interest? (Aparna Elita, Lodha Meridian, KNR Greenville, Prestige High Fields, or any other?)`;
+        reply = `Got it! And which property caught your interest? We have Aparna Elita, Lodha Meridian, KNR Greenville, and a few others.`;
       } else if (conv.step === 3) {
         conv.data.property = text.trim();
         conv.step = 4;
-        reply = `Anything specific you'd like the agent to know before the visit? Any questions? (Or just say "no" to skip)`;
+        reply = `Anything specific you'd like the agent to know beforehand? Any questions you have? (Or just say "no")`;
       } else if (conv.step === 4) {
         conv.data.notes = text.trim().toLowerCase() === 'no' || text.trim().toLowerCase() === 'none' ? '' : text.trim();
 
@@ -196,13 +204,13 @@ Our agent will confirm the slot shortly. See you at the site!`;
 
     if (!reply) {
       if (['hi', 'hello', 'hey', 'namaste'].includes(lower)) {
-        reply = `Hey! Welcome to Sri Sai Properties. Looking for a home in Hyderabad? Tell me your budget and I'll find the best options for you.`;
+        reply = `Hey! Welcome to Sri Sai Properties 👋 Looking for a home in Hyderabad? Tell me your budget, I'll find the best options for you.`;
       } else if (lower.includes('agent') || lower.includes('call') || lower.includes('talk')) {
-        reply = `Sure, an agent will call you shortly. Please share your preferred time if any.`;
+        reply = `Sure, I'll have our agent call you. Could you tell me your preferred time?`;
       } else if (lower.includes('thank')) {
-        reply = `You're welcome! Let me know if you have any more questions. Happy to help!`;
+        reply = `You're welcome! Happy to help. Let me know if you have any other questions.`;
       } else {
-        reply = `I can help you find the perfect property in Gachibowli, Kokapet, or Tellapur. What's your budget range?`;
+        reply = `I can help you find a great property in Gachibowli, Kokapet, or Tellapur. What's your budget range? I'll suggest the best options.`;
       }
     }
 
