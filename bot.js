@@ -92,21 +92,7 @@ async function startBot() {
       const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
       if (shouldReconnect) {
         qrShown = false;
-// HTTP server for Railway — shows QR at the web URL
-const PORT = process.env.PORT || 3000;
-http.createServer((req, res) => {
-  res.writeHead(200, {'Content-Type': 'text/html'});
-  const qrFile = __dirname + '/qr.txt';
-  if (req.url === '/qr' && fs.existsSync(qrFile)) {
-    const qrData = fs.readFileSync(qrFile, 'utf8').trim();
-    if (qrData) {
-      QR.toDataURL(qrData, { width: 150, margin: 0 }, (err, url) => {
-        res.end(`<!DOCTYPE html><html><body style="margin:0;background:#fff;display:flex;justify-content:center;align-items:center;height:100vh;flex-direction:column;font-family:sans-serif"><img src="${url}" style="width:180px;height:180px;display:block"/><p style="margin-top:15px;color:#333;font-size:14px">Open WhatsApp → Linked Devices → Scan this QR</p></body></html>`);
-      }); return;
-    }
-  }
-  res.end('OK');
-}).listen(PORT, () => console.log(`Server on ${PORT}`));
+        startBot();
       }
     }
   });
@@ -224,5 +210,22 @@ Our agent will confirm the slot shortly. See you at the site!`;
     console.log(`✅ ${phone}: "${text.slice(0,35)}"`);
   });
 }
+
+// HTTP server for Railway — shows QR and keeps health check alive
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+  res.writeHead(200, {'Content-Type': 'text/html'});
+  const qrFile = __dirname + '/qr.txt';
+  if (req.url === '/qr' && fs.existsSync(qrFile)) {
+    const qrData = fs.readFileSync(qrFile, 'utf8').trim();
+    if (qrData) {
+      QR.toDataURL(qrData, { width: 150, margin: 0 }, (err, url) => {
+        if (err) { res.end('QR error'); return; }
+        res.end(`<!DOCTYPE html><html><body style="margin:0;background:#fff;display:flex;justify-content:center;align-items:center;height:100vh;flex-direction:column;font-family:sans-serif"><img src="${url}" style="width:180px;height:180px;display:block"/><p style="margin-top:15px;color:#333;font-size:14px">Open WhatsApp → Linked Devices → Scan</p></body></html>`);
+      }); return;
+    }
+  }
+  res.end('OK');
+}).listen(PORT, () => console.log(`Server on ${PORT}`));
 
 startBot();
