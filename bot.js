@@ -95,32 +95,18 @@ async function startBot() {
 // HTTP server for Railway — shows QR at the web URL
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => {
-  if (req.url === '/qr' || req.url === '/qr.png') {
-    const qrFile = __dirname + '/qr.txt';
-    const qrPng = __dirname + '/qr.png';
-    if (fs.existsSync(qrFile)) {
-      const qrData = fs.readFileSync(qrFile, 'utf8').trim();
-      if (!qrData) { res.end('QR not ready'); return; }
-      if (req.url === '/qr.png') {
-        QR.toFile(qrPng, qrData, { width: 400, margin: 1, color: { dark: '#000000', light: '#ffffff' } }, (err) => {
-          if (err) { res.end('Error generating QR'); return; }
-          const img = fs.readFileSync(qrPng);
-          res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': img.length });
-          res.end(img);
-        });
-      } else {
-        QR.toDataURL(qrData, { width: 150, margin: 0, scale: 2 }, (err, url) => {
-          if (err) { res.end('QR not ready'); return; }
-          res.writeHead(200, {'Content-Type': 'text/html'});
-          res.end(`<!DOCTYPE html><html><body style="margin:0;display:flex;justify-content:center;align-items:center;height:100vh;flex-direction:column;background:#f5f5f5;font-family:sans-serif"><div style="background:#fff;padding:20px;border-radius:12px;box-shadow:0 2px 20px rgba(0,0,0,.1)"><img src="/qr.png" style="width:200px;height:200px;display:block"/></div><p style="margin-top:20px;color:#333;font-size:14px">Open WhatsApp → Linked Devices → Link a Device → Scan</p></body></html>`);
-        });
-      }
-    } else { res.end('Bot starting... QR not ready. Refresh in 10 seconds.'); }
-  } else {
-    res.writeHead(200, {'Content-Type': 'text/plain'});
-    res.end('WhatsApp Bot running. Visit /qr to scan.');
+  res.writeHead(200, {'Content-Type': 'text/html'});
+  const qrFile = __dirname + '/qr.txt';
+  if (req.url === '/qr' && fs.existsSync(qrFile)) {
+    const qrData = fs.readFileSync(qrFile, 'utf8').trim();
+    if (qrData) {
+      QR.toDataURL(qrData, { width: 150, margin: 0 }, (err, url) => {
+        res.end(`<!DOCTYPE html><html><body style="margin:0;background:#fff;display:flex;justify-content:center;align-items:center;height:100vh;flex-direction:column;font-family:sans-serif"><img src="${url}" style="width:180px;height:180px;display:block"/><p style="margin-top:15px;color:#333;font-size:14px">Open WhatsApp → Linked Devices → Scan this QR</p></body></html>`);
+      }); return;
+    }
   }
-}).listen(PORT, () => console.log(`Web server on port ${PORT}`));
+  res.end('OK');
+}).listen(PORT, () => console.log(`Server on ${PORT}`));
       }
     }
   });
