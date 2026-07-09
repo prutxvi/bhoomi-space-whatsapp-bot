@@ -290,11 +290,10 @@ http.createServer(async (req, res) => {
   if (url.pathname === '/qr' && fs.existsSync(qrFile)) {
     const qrData = fs.readFileSync(qrFile, 'utf8').trim();
     if (qrData) {
-      QR.toString(qrData, { type: 'terminal', small: true, errorCorrectionLevel: 'L' }, (err, str) => {
+      QR.toString(qrData, { type: 'utf8', errorCorrectionLevel: 'L' }, (err, str) => {
         if (err) { res.writeHead(200, {'Content-Type': 'text/html'}); res.end('QR error'); return; }
-        const cleaned = str.replace(/\u001b\[[0-9;]*m/g, '').trim();
-        res.writeHead(200, {'Content-Type': 'text/html'});
-        res.end(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:10px}pre{font-family:'Courier New',monospace;font-size:9px;line-height:1;letter-spacing:0;background:#fff;color:#000;padding:8px;overflow:auto;max-width:100%;font-weight:700}</style></head><body><pre>${cleaned}</pre></body></html>`);
+        res.writeHead(200, {'Content-Type': 'text/html; charset=utf-8'});
+        res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:5px}pre{font-size:8px;line-height:1;letter-spacing:0;font-family:monospace;margin:0;padding:4px}</style></head><body><pre>${str}</pre></body></html>`);
       });
       return;
     }
