@@ -251,18 +251,13 @@ http.createServer((req, res) => {
   if (req.url === '/qr' && fs.existsSync(qrFile)) {
     const qrData = fs.readFileSync(qrFile, 'utf8').trim();
     if (qrData) {
-      if (fs.existsSync(qrPng) && Date.now() - fs.statSync(qrPng).mtimeMs < 60000) {
+      QR.toFile(qrPng, qrData, { width: 500, margin: 2, color: { dark: '#000', light: '#fff' }, errorCorrectionLevel: 'L' }, (err) => {
+        if (err) { res.writeHead(200, {'Content-Type': 'text/html'}); res.end('QR error'); return; }
         const img = fs.readFileSync(qrPng);
-        res.writeHead(200, {'Content-Type': 'image/png', 'Content-Length': img.length});
-        res.end(img);
-      } else {
-        QR.toFile(qrPng, qrData, { width: 500, margin: 2, color: { dark: '#000', light: '#fff' }, errorCorrectionLevel: 'L' }, (err) => {
-          if (err) { res.writeHead(200, {'Content-Type': 'text/html'}); res.end('QR error'); return; }
-          const img = fs.readFileSync(qrPng);
-          res.writeHead(200, {'Content-Type': 'image/png', 'Content-Length': img.length});
-          res.end(img);
-        });
-      }
+        const b64 = img.toString('base64');
+        res.writeHead(200, {'Content-Type': 'text/html'});
+        res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><script>setTimeout(function(){location.reload()},15000)</script><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#f5f5f5;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:sans-serif;text-align:center;flex-direction:column;padding:20px}.card{background:#fff;padding:16px;border-radius:12px;box-shadow:0 2px 20px rgba(0,0,0,.08);max-width:340px}img{width:100%;max-width:280px;display:block;margin:0 auto}h3{color:#222;margin:15px 0 5px;font-size:15px}p{color:#666;font-size:13px;margin:3px 0}.bad{background:#e8f5e9;padding:4px 10px;border-radius:20px;font-size:12px;color:#2e7d32;display:inline-block;margin-top:10px}</style></head><body><div class="card"><img src="data:image/png;base64,${b64}"/><h3>Scan with WhatsApp</h3><p>Open WhatsApp → Linked Devices → Link a Device</p><p style="font-size:11px;color:#999;margin-top:8px">Auto-refreshes every 15s · ${new Date().toLocaleTimeString()}</p></div></body></html>`);
+      });
       return;
     }
   }
