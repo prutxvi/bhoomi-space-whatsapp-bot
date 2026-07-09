@@ -263,21 +263,34 @@ if (!conv.lang) {
   });
 }
 
-// HTTP server for Railway — shows QR and keeps health check alive
+// HTTP server for Railway — serves QR as PNG and health check
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => {
-  res.writeHead(200, {'Content-Type': 'text/html'});
   const qrFile = __dirname + '/qr.txt';
+  const qrPng = __dirname + '/qr.png';
+  
   if (req.url === '/qr' && fs.existsSync(qrFile)) {
     const qrData = fs.readFileSync(qrFile, 'utf8').trim();
     if (qrData) {
-      QR.toDataURL(qrData, { width: 400, margin: 2, color: { dark: '#000000', light: '#ffffff' }, errorCorrectionLevel: 'M' }, (err, url) => {
-        if (err) { res.end('QR error'); return; }
-        res.end(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;flex-direction:column;font-family:-apple-system,sans-serif;padding:20px}.qr-wrap{background:#fff;padding:16px;border-radius:12px;box-shadow:0 2px 24px rgba(0,0,0,.08);max-width:340px;text-align:center}img{width:100%;height:auto;max-width:280px;display:block;margin:0 auto}p{color:#333;font-size:14px;margin-top:16px;line-height:1.4}</style></head><body><div class="qr-wrap"><img src="${url}" alt="QR Code"/><p>Open WhatsApp → <b>Linked Devices</b> → Link a Device<br/>Point your phone at this QR code</p></div></body></html>`);
-      }); return;
+      if (fs.existsSync(qrPng) && Date.now() - fs.statSync(qrPng).mtimeMs < 60000) {
+        const img = fs.readFileSync(qrPng);
+        res.writeHead(200, {'Content-Type': 'image/png', 'Content-Length': img.length});
+        res.end(img);
+      } else {
+        QR.toFile(qrPng, qrData, { width: 500, margin: 2, color: { dark: '#000000', light: '#ffffff' }, errorCorrectionLevel: 'L', type: 'png' }, (err) => {
+          if (err) { res.writeHead(200, {'Content-Type': 'text/html'}); res.end('QR error'); return; }
+          const img = fs.readFileSync(qrPng);
+          res.writeHead(200, {'Content-Type': 'image/png', 'Content-Length': img.length});
+          res.end(img);
+        });
+      }
+      return;
     }
   }
-  res.end('OK');
+  
+  res.writeHead(200, {'Content-Type': 'text/html'});
+  if (req.url === '/qr') res.end('QR not ready yet. Refresh in 10 seconds.');
+  else res.end('OK');
 }).listen(PORT, () => console.log(`Server on ${PORT}`));
 
 startBot();
