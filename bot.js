@@ -188,7 +188,7 @@ async function startBot() {
 
     // --- Language Selection ---
     if (!conv.lang) {
-      const langMap = { '1': 'telugu', '2': 'english', '3': 'hindi', 'telugu': 'telugu', 'english': 'english', 'hindi': 'hindi', 'te': 'telugu', 'en': 'english', 'hi': 'hindi' };
+      const langMap = { '1': 'telugu', '2': 'english', '3': 'hindi', 'telugu': 'telugu', 'english': 'english', 'hindi': 'hindi' };
       const chosen = langMap[lower] || '';
       if (chosen) {
         conv.lang = chosen;
