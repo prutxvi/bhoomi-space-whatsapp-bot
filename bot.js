@@ -103,6 +103,7 @@ async function startBot() {
   global.__sock = sock;
 
   sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
+    global.__sock = sock;
     if (qr && !qrShown) {
       qrShown = true;
       fs.writeFileSync(__dirname + '/qr.txt', qr);
@@ -289,10 +290,10 @@ http.createServer(async (req, res) => {
   if (url.pathname === '/qr' && fs.existsSync(qrFile)) {
     const qrData = fs.readFileSync(qrFile, 'utf8').trim();
     if (qrData) {
-      QR.toString(qrData, { type: 'svg', width: 300, margin: 2, color: { dark: '#000000', light: '#ffffff' } }, (err, svg) => {
+      QR.toString(qrData, { type: 'svg', width: 800, margin: 4, color: { dark: '#000000', light: '#ffffff' } }, (err, svg) => {
         if (err) { res.writeHead(200, {'Content-Type': 'text/html'}); res.end('QR error'); return; }
         res.writeHead(200, {'Content-Type': 'text/html'});
-        res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><script>setTimeout(function(){location.reload()},15000)</script><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;flex-direction:column;padding:20px;font-family:-apple-system,sans-serif}.card{background:#fff;padding:16px;border-radius:12px;box-shadow:0 2px 24px rgba(0,0,0,.12);max-width:360px;text-align:center}.card svg{width:100%;height:auto;max-width:280px;display:block;margin:0 auto}h3{color:#111;margin:15px 0 5px;font-size:16px}p{color:#555;font-size:13px;margin:3px 0}.time{color:#999;font-size:11px;margin-top:10px}</style></head><body><div class="card">${svg}<h3>Scan with WhatsApp</h3><p>Open WhatsApp → Linked Devices → Link a Device</p><p class="time">Refreshes every 15s · ${new Date().toLocaleTimeString()}</p></div></body></html>`);
+        res.end(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#f5f5f5;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:10px}svg{max-width:100%;height:auto;display:block}</style></head><body>${svg}</body></html>`);
       });
       return;
     }
