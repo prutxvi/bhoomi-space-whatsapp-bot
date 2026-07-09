@@ -271,9 +271,9 @@ http.createServer((req, res) => {
   if (req.url === '/qr' && fs.existsSync(qrFile)) {
     const qrData = fs.readFileSync(qrFile, 'utf8').trim();
     if (qrData) {
-      QR.toDataURL(qrData, { width: 150, margin: 0 }, (err, url) => {
+      QR.toDataURL(qrData, { width: 400, margin: 2, color: { dark: '#000000', light: '#ffffff' }, errorCorrectionLevel: 'M' }, (err, url) => {
         if (err) { res.end('QR error'); return; }
-        res.end(`<!DOCTYPE html><html><body style="margin:0;background:#fff;display:flex;justify-content:center;align-items:center;height:100vh;flex-direction:column;font-family:sans-serif"><img src="${url}" style="width:180px;height:180px;display:block"/><p style="margin-top:15px;color:#333;font-size:14px">Open WhatsApp → Linked Devices → Scan</p></body></html>`);
+        res.end(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;flex-direction:column;font-family:-apple-system,sans-serif;padding:20px}.qr-wrap{background:#fff;padding:16px;border-radius:12px;box-shadow:0 2px 24px rgba(0,0,0,.08);max-width:340px;text-align:center}img{width:100%;height:auto;max-width:280px;display:block;margin:0 auto}p{color:#333;font-size:14px;margin-top:16px;line-height:1.4}</style></head><body><div class="qr-wrap"><img src="${url}" alt="QR Code"/><p>Open WhatsApp → <b>Linked Devices</b> → Link a Device<br/>Point your phone at this QR code</p></div></body></html>`);
       }); return;
     }
   }
