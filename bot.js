@@ -124,7 +124,9 @@ async function startBot() {
 
     let reply = '';
 
-    // --- Booking Flow (natural conversation) ---
+    const lower = text.toLowerCase().trim();
+
+    // --- Language Selection (for new users) ---
     if (conv.flow === 'booking') {
       if (conv.step === 0) {
         conv.data.name = text.trim();
@@ -203,7 +205,6 @@ if (!conv.lang) {
 }
 
 // --- Check if user wants to book ---
-    const lower = text.toLowerCase().trim();
     const triggers = ['visit', 'book', 'yeah sure', 'yes', 'sure', 'ok', 'okay', "let's do", "let's go", 'want to see', 'show me', 'book slot', 'book visit', 'schedule visit', 'i\'m interested', 'sounds good', 'let\'s book'];
 
     if (triggers.some(t => lower === t || lower.includes(t))) {
