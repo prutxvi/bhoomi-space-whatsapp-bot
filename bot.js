@@ -245,7 +245,6 @@ if (!conv.lang) {
         reply = fallbackHi;
       }
     }
-    }
 
     await sendMsg(sock, sender, { text: reply });
     console.log(`✅ ${phone}: "${text.slice(0,35)}"`);
