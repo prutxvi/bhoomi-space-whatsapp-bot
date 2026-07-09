@@ -231,11 +231,17 @@ async function startBot() {
     await sendMsg(sock, sender, { text: reply });
     console.log(`✅ ${phone}: "${text.slice(0,35)}"`);
 
-    // --- Forward Seller Leads ---
-    if (hasSellerInfo(text) && hasPhone(text)) {
-      const leadMsg = `🔔 *New Seller Lead!*\n📱 ${phone}\n💬 "${text.slice(0,100)}"\n🕐 ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
+    // --- Forward Booking/Seller Leads ---
+    const userHasPhone = /\b[6-9]\d{9}\b/.test(text);
+    const convText = conv.messages.map(m => m.content).join(' ').toLowerCase();
+    const isBookingConv = convText.includes('visit') || convText.includes('book') || convText.includes('site');
+    const isSellerConv = hasSellerInfo(convText) && userHasPhone;
+
+    if (userHasPhone && (isBookingConv || isSellerConv)) {
+      const leadType = isSellerConv ? 'Seller Lead' : 'Booking Lead';
+      const leadMsg = `🔔 *New ${leadType}!*\n📱 ${phone}\n💬 "${text.slice(0,150)}"\n🕐 ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
       try { await sock.sendMessage(AGENT_JID, { text: leadMsg }); } catch(e) {}
-      console.log(`📤 Seller lead forwarded: ${phone}`);
+      console.log(`📤 ${leadType} forwarded: ${phone}`);
     }
 
     conversationMemory.set(sender, conv);
