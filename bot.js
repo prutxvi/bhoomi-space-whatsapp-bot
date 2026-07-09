@@ -51,7 +51,10 @@ async function sendMsg(sock, jid, msg) {
   try { await sock.sendMessage(jid, msg); } catch (e) { console.log('Send error:', e.message); }
 }
 
-async function getAIReply(userMessage) {
+async function getAIReply(userMessage, lang = 'english') {
+  const langInstruction = lang === 'telugu' ? 'IMPORTANT: Always reply in TELUGU (తెలుగు). Use Telugu script. Be natural like a local Hyderabad agent.'
+    : lang === 'hindi' ? 'IMPORTANT: Always reply in HINDI (हिंदी). Use Devanagari script. Be natural.'
+    : 'IMPORTANT: Reply in ENGLISH. Be conversational.';
   try {
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
@@ -180,7 +183,26 @@ Our agent will confirm the slot shortly. See you at the site!`;
       return;
     }
 
-    // --- Check if user wants to book ---
+    // --- Language Selection (for new users) ---
+if (!conv.lang) {
+  const langMap = { '1': 'telugu', '2': 'english', '3': 'hindi', 'telugu': 'telugu', 'english': 'english', 'hindi': 'hindi', 'te': 'telugu', 'en': 'english', 'hi': 'hindi' };
+  const chosen = langMap[lower] || '';
+  if (chosen) {
+    conv.lang = chosen;
+    conversationMemory.set(sender, conv);
+    saveMemory();
+    reply = chosen === 'telugu' ? '👋 *Sri Sai Properties* ki swagatam! Meeru em kondalanukun-tunnaru? Meeru budget entha anukuntunnaru?' 
+         : chosen === 'hindi' ? '👋 *Sri Sai Properties* mein aapka swagat hai! Aap kya dhundh rahe hain? Budget kitna hai?'
+         : '👋 Welcome to *Sri Sai Properties*! Looking for a home in Hyderabad? What\'s your budget?';
+    await sendMsg(sock, sender, { text: reply });
+    return;
+  }
+  reply = `*Welcome to Sri Sai Properties!* 🏡 Please choose your language / Basha select cheyandi / Bhasha chuniye:\n\n1️⃣ Telugu\n2️⃣ English\n3️⃣ Hindi`;
+  await sendMsg(sock, sender, { text: reply });
+  return;
+}
+
+// --- Check if user wants to book ---
     const lower = text.toLowerCase().trim();
     const triggers = ['visit', 'book', 'yeah sure', 'yes', 'sure', 'ok', 'okay', "let's do", "let's go", 'want to see', 'show me', 'book slot', 'book visit', 'schedule visit', 'i\'m interested', 'sounds good', 'let\'s book'];
 
@@ -197,21 +219,32 @@ Our agent will confirm the slot shortly. See you at the site!`;
 
     // --- Normal AI response ---
     try {
-      reply = await getAIReply(text);
+      reply = await getAIReply(text, conv.lang || 'english');
     } catch (e) {
       console.log(`Groq error: ${e.message}`);
     }
 
     if (!reply) {
+      const fallbackHi = conv.lang === 'telugu' ? '👋 *Sri Sai Properties* ki swagatam! Meeru em kondalanukun-tunnaru? Budget entha?' 
+        : conv.lang === 'hindi' ? '👋 *Sri Sai Properties* mein aapka swagat hai! Aap kya dhundh rahe hain? Budget kitna hai?'
+        : '👋 Welcome to *Sri Sai Properties*! Looking for a home in Hyderabad? What\'s your budget?';
+      const fallbackAgent = conv.lang === 'telugu' ? 'Sare, maa agent mee call chestaru. Mee preferred time cheppandi.'
+        : conv.lang === 'hindi' ? 'Theek hai, humara agent aapko call karega. Apna preferred time batao.'
+        : 'Sure, our agent will call you. Share your preferred time?';
+      const fallbackThanks = conv.lang === 'telugu' ? 'Dhanyavadalu! Inka doubts unte adagandi.'
+        : conv.lang === 'hindi' ? 'Shukriya! Koi aur sawaal hai to puchiye.'
+        : 'Thank you! Let me know if you have more questions.';
+
       if (['hi', 'hello', 'hey', 'namaste'].includes(lower)) {
-        reply = `Hey! Welcome to Sri Sai Properties 👋 Looking for a home in Hyderabad? Tell me your budget, I'll find the best options for you.`;
+        reply = fallbackHi;
       } else if (lower.includes('agent') || lower.includes('call') || lower.includes('talk')) {
-        reply = `Sure, I'll have our agent call you. Could you tell me your preferred time?`;
+        reply = fallbackAgent;
       } else if (lower.includes('thank')) {
-        reply = `You're welcome! Happy to help. Let me know if you have any other questions.`;
+        reply = fallbackThanks;
       } else {
-        reply = `I can help you find a great property in Gachibowli, Kokapet, or Tellapur. What's your budget range? I'll suggest the best options.`;
+        reply = fallbackHi;
       }
+    }
     }
 
     await sendMsg(sock, sender, { text: reply });
