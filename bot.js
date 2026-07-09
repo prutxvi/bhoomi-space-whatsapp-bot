@@ -91,6 +91,7 @@ function hasPhone(text) {
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth_info');
   let qrShown = false;
+  let pairingRequested = false;
 
   const sock = makeWASocket({
     printQRInTerminal: false,
@@ -99,17 +100,22 @@ async function startBot() {
     browser: ['Sri Sai Properties', '', ''],
   });
 
+  global.__sock = sock;
+
   sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
     if (qr && !qrShown) {
       qrShown = true;
       fs.writeFileSync(__dirname + '/qr.txt', qr);
+      global.__qr_data = qr;
       console.log('\n' + '='.repeat(55));
-      console.log('  SCAN THIS QR WITH YOUR WHATSAPP SPARE NUMBER');
+      console.log('  OPTION 1: SCAN QR WITH WHATSAPP');
       console.log('  WhatsApp -> Settings -> Linked Devices -> Link a Device');
       console.log('='.repeat(55) + '\n');
       qrcode.generate(qr, { small: false });
       console.log('\n' + '='.repeat(55));
-      console.log('  Waiting for scan...');
+      console.log('  OPTION 2: USE PAIRING CODE');
+      console.log('  Visit /pair?phone=91XXXXXXXXXX in browser');
+      console.log('  Enter the code in WhatsApp -> Linked Devices');
       console.log('='.repeat(55) + '\n');
     }
     if (connection === 'open') {
@@ -253,10 +259,34 @@ async function startBot() {
 
 // HTTP server for Railway
 const PORT = process.env.PORT || 3000;
-http.createServer((req, res) => {
+http.createServer(async (req, res) => {
+  const url = new URL(req.url, `http://localhost:${PORT}`);
   const qrFile = __dirname + '/qr.txt';
-  const qrPng = __dirname + '/qr.png';
-  if (req.url === '/qr' && fs.existsSync(qrFile)) {
+
+  // --- Pairing Code Endpoint ---
+  if (url.pathname === '/pair') {
+    const phone = url.searchParams.get('phone');
+    if (!phone) {
+      res.writeHead(200, {'Content-Type': 'text/html'});
+      res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{margin:0;padding:16px;font-family:sans-serif}input,button{font-size:18px;padding:10px;border:2px solid #ddd;border-radius:8px}button{background:#25D366;color:#fff;border:none;cursor:pointer}form{display:flex;gap:10px;max-width:400px;flex-wrap:wrap}</style></head><body><h3>WhatsApp Pairing</h3><form method="get" action="/pair"><input type="tel" name="phone" placeholder="91XXXXXXXXXX" required/><button type="submit">Get Code</button></form><p style="margin-top:12px;color:#666;font-size:13px">Enter your WhatsApp number with country code (without +)</p></body></html>`);
+      return;
+    }
+    try {
+      const sock = global.__sock;
+      if (!sock) { res.end('Bot not ready. Wait 10 seconds and refresh.'); return; }
+      const code = await sock.requestPairingCode(phone);
+      const display = typeof code === 'string' ? code.match(/.{1,4}/g)?.join('-') || code : code;
+      res.writeHead(200, {'Content-Type': 'text/html'});
+      res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#f0faf0;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:sans-serif;text-align:center;flex-direction:column;padding:20px}.card{background:#fff;padding:30px;border-radius:16px;box-shadow:0 2px 24px rgba(0,0,0,.1);max-width:400px}.code{font-size:42px;font-weight:700;letter-spacing:6px;color:#075e54;background:#e8f5e9;padding:20px;border-radius:12px;margin:15px 0;font-family:monospace}.step{color:#333;font-size:15px;margin:6px 0}.num{color:#999;font-size:13px;margin-top:15px}</style></head><body><div class="card"><h2 style="color:#075e54">Pairing Code</h2><div class="code">${display}</div><p class="step">1️⃣ Open WhatsApp on your phone</p><p class="step">2️⃣ Settings → <b>Linked Devices</b></p><p class="step">3️⃣ Tap <b>Link a Device</b></p><p class="step">4️⃣ Enter this code</p><p class="num">Phone: ${phone} · Code expires in 2 minutes</p></div></body></html>`);
+    } catch (e) {
+      res.writeHead(200, {'Content-Type': 'text/html'});
+      res.end(`Error: ${e.message}. Try again in 10 seconds.`);
+    }
+    return;
+  }
+
+  // --- QR Endpoint ---
+  if (url.pathname === '/qr' && fs.existsSync(qrFile)) {
     const qrData = fs.readFileSync(qrFile, 'utf8').trim();
     if (qrData) {
       QR.toString(qrData, { type: 'svg', width: 300, margin: 2, color: { dark: '#000000', light: '#ffffff' } }, (err, svg) => {
@@ -268,7 +298,7 @@ http.createServer((req, res) => {
     }
   }
   res.writeHead(200, {'Content-Type': 'text/html'});
-  if (req.url === '/qr') res.end('QR generating... Refresh.');
+  if (url.pathname === '/qr') res.end('QR generating... Refresh.');
   else res.end('OK');
 }).listen(PORT, () => console.log(`Server on ${PORT}`));
 
