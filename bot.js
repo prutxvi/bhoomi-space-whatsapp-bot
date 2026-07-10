@@ -9,32 +9,42 @@ const http = require('http');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-const SYSTEM_PROMPT = `You are "Sri Sai Properties" — a professional real estate WhatsApp assistant in Hyderabad.
+const PROPERTY_IMAGES = {
+  'Aparna Elita':        __dirname + '/images/aparna-elita.jpg',
+  'Lodha Meridian':      __dirname + '/images/lodha-meridian.jpg',
+  'Prestige High Fields':__dirname + '/images/prestige-high-fields.jpg',
+  'KNR Greenville':      __dirname + '/images/knr-greenville.jpg',
+  'My Home Vihanga':     __dirname + '/images/my-home-vihanga.jpg',
+  'Rajapushpa Provincia':__dirname + '/images/rajapushpa-provincia.jpg',
+  'Godrej Ananda':       __dirname + '/images/godrej-ananda.jpg',
+  'Sai Residency':       __dirname + '/images/sai-residency.jpg',
+  'Sri Lakshmi Towers':  __dirname + '/images/sri-lakshmi-towers.jpg',
+  'Vishnu Heights':      __dirname + '/images/vishnu-heights.jpg',
+};
 
-HOW TO BEHAVE:
-- Chat naturally. Sound like a helpful local agent.
-- Ask ONE question per message. Never multiple questions.
-- First message: "Hello! How can I help you today?" — NEVER ask budget first.
-- Let them tell you what they want step by step.
+const SYSTEM_PROMPT = `You are "Sri Sai Properties" — a real estate WhatsApp assistant in Hyderabad.
 
-CONVERSATION FLOW (follow this order):
-1. They say hi → Ask what they need
-2. They say buy/looking → Ask "Buying or renting?"
-3. They say buy → Ask "What's your budget range?" or "Which area?"
-4. They give budget → Suggest ONLY 2 properties that match. Format:
-   🏠 Property Name — BHK, size, price, area (status)
-   🏠 Property Name — BHK, size, price, area (status)
-   Then one question: "Want to visit?"
-5. If they ask about an area → Describe simply. Don't list properties unless they ask.
-6. If they say sell → Ask: area, BHK, expected price. Then ask name and phone.
+BEHAVE NATURALLY:
+- Be friendly and helpful like a local agent.
+- One short question at a time. No paragraphs.
+- First message: "Hello! How can I help you today?" — Never ask budget first.
 
-CRITICAL RULES:
-- NEVER show all 7 properties at once. Show maximum 2-3 matching their budget.
-- NEVER write paragraphs. Each line is separate. Short like WhatsApp.
-- NEVER offer images. Say "I'll have our agent share details."
-- When buyer wants to visit: Ask for name AND phone. Confirm only after both.
-- Remember what they said earlier. Don't repeat questions.
-- Use emojis naturally: 🏠 for properties, ✅ for confirm, 📞 for contact.
+CONVERSATION GUIDE:
+- If they greet → Ask what they need
+- If they want a property → Ask buying or renting, then budget and area
+- Suggest 2-3 matching properties from the list below with details
+- After suggesting, ask if they want photos (only send if they ask)
+- If they want to visit → Ask for their name and phone naturally
+- If they ask about an area → Describe it simply
+- If they want to sell → Ask area, BHK, expected price, name and phone
+
+IMPORTANT:
+- Never list all properties at once. Only 2-3 matching their budget.
+- Never write long paragraphs. Short WhatsApp-style messages.
+- Ask one thing at a time. Don't overwhelm.
+- Use emojis naturally: 🏠 for properties, ✅ for confirm, 📸 for images.
+- If they ask for photos, offer to share. Then ask if they want to visit.
+- Remember what they said. Don't repeat questions.
 
 AVAILABLE PROPERTIES:
 🏠 Aparna Elita — 2BHK, 1280 sqft, ₹89L, Ready, Gachibowli
@@ -44,10 +54,14 @@ AVAILABLE PROPERTIES:
 🏠 My Home Vihanga — 3BHK, 1650 sqft, ₹1.45Cr, Dec 2026, Kokapet
 🏠 Rajapushpa Provincia — 3BHK, 1800 sqft, ₹1.6Cr, Mar 2027, Nallagandla
 🏠 Godrej Ananda — 3BHK, 1725 sqft, ₹1.55Cr, Jun 2027, Kokapet
+🏠 Sai Residency — 2BHK, 1050 sqft, ₹68L, Ready, Kondapur
+🏠 Sri Lakshmi Towers — 3BHK, 1550 sqft, ₹1.25Cr, Aug 2026, Manikonda
+🏠 Vishnu Heights — 2BHK, 1100 sqft, ₹72L, Ready, Miyapur
 
 BUDGET RANGES (use these to match):
-- Under ₹1Cr: Aparna Elita, Lodha Meridian, Prestige High Fields, KNR Greenville
-- ₹1Cr-₹2Cr: My Home Vihanga, Godrej Ananda, Rajapushpa Provincia
+- Under ₹80L: Sai Residency, Vishnu Heights
+- ₹80L-₹1Cr: Aparna Elita, Lodha Meridian, Prestige High Fields, KNR Greenville
+- ₹1Cr-₹2Cr: My Home Vihanga, Godrej Ananda, Rajapushpa Provincia, Sri Lakshmi Towers
 - Over ₹2Cr: Rajapushpa Provincia, Godrej Ananda
 
 AREA INFO:
@@ -67,29 +81,39 @@ function saveMemory() {
 }
 
 async function sendMsg(sock, jid, msg) {
-  try { await sock.sendMessage(jid, msg); } catch (e) { console.log('Send error:', e.message); }
+  try {
+    await sock.sendMessage(jid, msg);
+    return true;
+  } catch (e) { console.log('Send error:', e.message); return false; }
 }
 
 async function getAIReply(userMessage, lang = 'english', history = []) {
   const langInstruction = lang === 'telugu' ? 'IMPORTANT: Always reply in TELUGU (తెలుగు). Use Telugu script. Be natural.'
     : lang === 'hindi' ? 'IMPORTANT: Always reply in HINDI (हिंदी). Use Devanagari script. Be natural.'
     : 'IMPORTANT: Reply in ENGLISH. Be conversational.';
-  try {
-    const messages = [
-      { role: 'system', content: SYSTEM_PROMPT + '\n' + langInstruction },
-      ...history.slice(-MAX_HISTORY),
-      { role: 'user', content: userMessage }
-    ];
-    const completion = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
-      messages,
-      temperature: 0.7,
-      max_tokens: 300
-    });
-    return completion.choices[0]?.message?.content || '';
-  } catch (e) {
-    console.log('Groq API error:', e.message);
-    return null;
+  const messages = [
+    { role: 'system', content: SYSTEM_PROMPT + '\n' + langInstruction },
+    ...history.slice(-MAX_HISTORY),
+    { role: 'user', content: userMessage }
+  ];
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const completion = await groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages,
+        temperature: 0.7,
+        max_tokens: 300
+      });
+      return completion.choices[0]?.message?.content || '';
+    } catch (e) {
+      if (attempt === 0) {
+        console.log('Groq retrying...');
+        await new Promise(r => setTimeout(r, 600));
+        continue;
+      }
+      console.log('Groq API error:', e.message);
+      return null;
+    }
   }
 }
 
@@ -98,19 +122,34 @@ function hasSellerInfo(text) {
   return lower.includes('sell') || lower.includes('selling') || lower.includes('sale') || lower.includes('listing');
 }
 
-function hasPhone(text) {
-  return /\d{10}/.test(text.replace(/[^0-9]/g, ''));
+function findPhone(text) {
+  const digits = text.replace(/\D/g, '');
+  if (digits.length === 10 && /^[6-9]/.test(digits)) return digits;
+  if (digits.length >= 11) {
+    const stripped = digits.replace(/^(?:\+|00)?(?:91)?0?/, '');
+    if (stripped.length === 10 && /^[6-9]/.test(stripped)) return stripped;
+    if (stripped.length > 10) {
+      const trimmed = stripped.slice(0, 10);
+      if (trimmed.length === 10 && /^[6-9]/.test(trimmed)) return trimmed;
+    }
+  }
+  return null;
+}
+
+function __(lang, en, te, hi) {
+  if (lang === 'telugu') return te;
+  if (lang === 'hindi') return hi;
+  return en;
 }
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth_info');
   let qrShown = false;
-  let pairingRequested = false;
 
   const sock = makeWASocket({
     printQRInTerminal: false,
     auth: state,
-    logger: pino({ level: 'silent' }),
+    logger: pino({ level: 'warn' }),
     browser: ['Sri Sai Properties', '', ''],
   });
 
@@ -135,12 +174,15 @@ async function startBot() {
     }
     if (connection === 'open') {
       console.log('\n✅ BOT IS LIVE!\n');
+      try { fs.unlinkSync(__dirname + '/qr.txt'); } catch(e) {}
     }
     if (connection === 'close') {
       const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
       if (shouldReconnect) {
         qrShown = false;
         startBot();
+      } else {
+        console.log('\n❌ BOT LOGGED OUT! Scan QR again to restart.\n');
       }
     }
   });
@@ -151,57 +193,51 @@ async function startBot() {
     const msg = messages[0];
     if (!msg.message || msg.key.fromMe || msg.key.remoteJid.endsWith('@g.us')) return;
 
-    const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+    let text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
     const sender = msg.key.remoteJid;
-    if (!text) return;
-
     const phone = sender.split('@')[0];
-    const conv = conversationMemory.get(sender) || { count: 0, flow: null, step: 0, data: {}, messages: [] };
+
+    // Handle non-text messages
+    if (!text) {
+      if (msg.message.imageMessage) {
+        text = '[Image]';
+      } else if (msg.message.audioMessage || msg.message.pttMessage) {
+        text = '[Voice]';
+      } else if (msg.message.videoMessage) {
+        text = '[Video]';
+      } else if (msg.message.locationMessage) {
+        text = '[Location]';
+      } else if (msg.message.documentMessage) {
+        text = '[Document]';
+      } else if (msg.message.stickerMessage) {
+        text = '[Sticker]';
+      } else {
+        return;
+      }
+      const lang = (conversationMemory.get(sender) || {}).lang || 'english';
+      const replies = {
+        '[Image]': { telugu: 'Meeeru oka photo pampincharu. Meeru elaanti property kosam chustunnaru?', english: 'I see you sent a photo! What type of property are you looking for?', hindi: 'Aapne ek photo bheja hai. Aap kaise property dhundh rahe hain?' },
+        '[Voice]': { telugu: 'Meeeru voice message pampincharu. Dayachesi text lo cheppandi.', english: 'I got your voice message. Could you type what you need?', hindi: 'Aapne voice message bheja hai. Kripya text mein bataen.' },
+        '[Video]': { telugu: 'Video chusanu. Property gurinchi text lo cheppandi.', english: 'Thanks for the video! Tell me about the property you\'re looking for.', hindi: 'Video dekha. Property ke baare mein text mein bataen.' },
+        '[Location]': { telugu: 'Location chusanu. Aa area lo elaanti property kavali?', english: 'Got your location! What type of property are you looking for in this area?', hindi: 'Location mil gayi! Is area mein kaise property chahiye?' },
+        '[Document]': { telugu: 'Document pampincharu. Nenu real estate lo help chestanu.', english: 'Thanks for the document! How can I help you with properties?', hindi: 'Document mil gaya. Property mein kaise madad chahiye?' },
+        '[Sticker]': { telugu: '😂😊', english: '😂😊 Need help finding a property?', hindi: '😂😊 Property dhundhne mein madad chahiye?' },
+      };
+      const r = (replies[text] || {})[lang] || replies[text]?.english || 'How can I help you?';
+      await sock.sendMessage(sender, { text: r });
+      return;
+    }
+    const conv = conversationMemory.get(sender) || { count: 0, messages: [], sentImages: [], lang: undefined };
     conv.count = (conv.count || 0) + 1;
     const lower = text.toLowerCase().trim();
 
     let reply = '';
 
-    // --- Booking Form Flow ---
-    if (conv.flow === 'booking') {
-      if (conv.step === 0) {
-        conv.data.name = text.trim();
-        conv.step = 1;
-        reply = `Thanks ${conv.data.name}! And your phone number?`;
-      } else if (conv.step === 1) {
-        const cleaned = text.replace(/[^0-9]/g, '');
-        if (cleaned.length >= 10) {
-          conv.data.phone = cleaned.slice(-10);
-          conv.step = 2;
-          reply = `Perfect! When would work best for you? Morning, afternoon, or evening — and which day?`;
-        } else {
-          reply = `Please share a 10-digit number so our agent can reach you.`;
-        }
-      } else if (conv.step === 2) {
-        conv.data.time = text.trim();
-        conv.step = 3;
-        reply = `Got it! Any specific property you're interested in, or shall our agent suggest options?`;
-      } else if (conv.step === 3) {
-        conv.data.property = text.trim();
-        conv.step = 4;
-        reply = `Anything specific you'd like the agent to know? (Or say "no")`;
-      } else if (conv.step === 4) {
-        conv.data.notes = text.trim().toLowerCase() === 'no' ? '' : text.trim();
-        const leadMsg = `🔔 *New Booking!*\n👤 ${conv.data.name}\n📱 ${conv.data.phone}\n📅 ${conv.data.time}\n🏠 ${conv.data.property}\n📝 ${conv.data.notes || '—'}\n🕐 ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
-        try { await sock.sendMessage(AGENT_JID, { text: leadMsg }); } catch(e) {}
-        reply = `You're all set ${conv.data.name}! 🎉 Our agent will confirm your slot shortly.`;
-        conv.flow = null; conv.step = 0; conv.data = {};
-        conversationMemory.set(sender, conv); saveMemory();
-        await sendMsg(sock, sender, { text: reply });
-        return;
-      }
-      conversationMemory.set(sender, conv); saveMemory();
-      await sendMsg(sock, sender, { text: reply });
-      return;
-    }
-
     // --- Language Selection ---
-    if (!conv.lang) {
+    if (!conv.lang || ['language', 'change language', 'switch language', 'lang'].includes(lower)) {
+      if (['language', 'change language', 'switch language', 'lang'].includes(lower)) {
+        conv.lang = undefined;
+      }
       const langMap = { '1': 'telugu', '2': 'english', '3': 'hindi', 'telugu': 'telugu', 'english': 'english', 'hindi': 'hindi' };
       const chosen = langMap[lower] || '';
       if (chosen) {
@@ -226,7 +262,7 @@ async function startBot() {
     }
 
     if (!reply) {
-      if (['hi', 'hello', 'hey', 'namaste'].includes(lower)) {
+      if (['hi', 'hello', 'hey', 'namaste'].some(w => lower.startsWith(w) || lower.includes(' ' + w))) {
         reply = conv.lang === 'telugu' ? 'Namaste! Sri Sai Properties. Meeru em kavali?'
              : conv.lang === 'hindi' ? 'Namaste! Sri Sai Properties. Aapko kya chahiye?'
              : 'Hello! Sri Sai Properties. How can I help you today?';
@@ -235,11 +271,13 @@ async function startBot() {
              : conv.lang === 'hindi' ? 'Humara agent call karega. Time batao.'
              : 'Our agent will call you. Share your preferred time?';
       } else if (lower.includes('thank')) {
-        reply = 'You\'re welcome! Let me know if you need anything else.';
+        reply = __(conv.lang, 'You\'re welcome! Let me know if you need anything else.',
+                         'Mee svagatham! Miku inkem kavali ante cheppandi.',
+                         'Aapka swagat hai! Kya aur koi madad chahiye?');
       } else {
-        reply = conv.lang === 'telugu' ? 'Telugu lo cheppandi. Nenu help chestanu.'
-             : conv.lang === 'hindi' ? 'Kya aapko madad chahiye?'
-             : 'How can I help you today?';
+        reply = conv.lang === 'telugu' ? 'Kshaminchandi, naku konni samasya vunnayi. Dayachesi malli cheppandi.'
+             : conv.lang === 'hindi' ? 'Maaf karo, kuch technical problem hai. Kya aap dubara bata sakte hain?'
+             : 'Sorry, I\'m having a glitch. Can you repeat that?';
       }
     }
 
@@ -254,17 +292,43 @@ async function startBot() {
     await sendMsg(sock, sender, { text: reply });
     console.log(`✅ ${phone}: "${text.slice(0,35)}"`);
 
-    // --- Forward Booking/Seller Leads ---
-    const userHasPhone = /\b[6-9]\d{9}\b/.test(text);
-    const convText = conv.messages.map(m => m.content).join(' ').toLowerCase();
-    const isBookingConv = convText.includes('visit') || convText.includes('book') || convText.includes('site');
-    const isSellerConv = hasSellerInfo(convText) && userHasPhone;
+    // --- Send Property Images (only when user asks) ---
+    const needsImage = /\b(images?|photos?|pictures?|pic?s?|show|see|look|brochure)\b/i.test(text.toLowerCase());
+    if (needsImage) {
+      if (!conv.sentImages) conv.sentImages = [];
+      await sock.sendPresenceUpdate('composing', sender).catch(() => {});
+      for (const [propName, imgPath] of Object.entries(PROPERTY_IMAGES)) {
+        if (conv.sentImages.includes(propName)) continue;
+        const mentionedInReply = reply.toLowerCase().includes(propName.toLowerCase());
+        const mentionedInConv = conv.messages.some(m => m.content.toLowerCase().includes(propName.toLowerCase()));
+        if (mentionedInReply || (needsImage && mentionedInConv)) {
+          if (fs.existsSync(imgPath)) {
+            try {
+              const imgBuf = fs.readFileSync(imgPath);
+              await sock.sendMessage(sender, {
+                image: imgBuf,
+                caption: `🏠 ${propName}`,
+                mimetype: 'image/jpeg'
+              });
+              conv.sentImages.push(propName);
+              console.log(`  📸 Sent ${propName} to ${phone}`);
+            } catch(e) { console.log(`  📸 ${propName} err: ${e.message}`); }
+          }
+        }
+      }
+    }
 
-    if (userHasPhone && (isBookingConv || isSellerConv)) {
+    // --- Forward Booking/Seller Leads ---
+    const userPhone = findPhone(text);
+    const convText = conv.messages.map(m => m.content).join(' ').toLowerCase();
+    const isBookingConv = convText.includes('visit') || convText.includes('book') || /\bsite\b/.test(convText);
+    const isSellerConv = hasSellerInfo(convText) && userPhone;
+
+    if (userPhone && (isBookingConv || isSellerConv)) {
       const leadType = isSellerConv ? 'Seller Lead' : 'Booking Lead';
-      const leadMsg = `🔔 *New ${leadType}!*\n📱 ${phone}\n💬 "${text.slice(0,150)}"\n🕐 ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
+      const leadMsg = `🔔 *New ${leadType}!*\n📱 ${userPhone}\n💬 "${text.slice(0,150)}"\n🕐 ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
       try { await sock.sendMessage(AGENT_JID, { text: leadMsg }); } catch(e) {}
-      console.log(`📤 ${leadType} forwarded: ${phone}`);
+      console.log(`📤 ${leadType} forwarded: ${userPhone}`);
     }
 
     conversationMemory.set(sender, conv);
@@ -277,6 +341,14 @@ const PORT = process.env.PORT || 3000;
 http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const qrFile = __dirname + '/qr.txt';
+
+  // --- Status Endpoint ---
+  if (url.pathname === '/status') {
+    const connected = !!(global.__sock && global.__sock.user);
+    res.writeHead(200, {'Content-Type': 'application/json'});
+    res.end(JSON.stringify({ status: connected ? 'connected' : 'disconnected', phone: connected ? global.__sock.user.id?.split(':')[0] || 'unknown' : null }));
+    return;
+  }
 
   // --- Pairing Code Endpoint ---
   if (url.pathname === '/pair') {
@@ -315,6 +387,6 @@ http.createServer(async (req, res) => {
   res.writeHead(200, {'Content-Type': 'text/html'});
   if (url.pathname === '/qr') res.end('QR generating... Refresh.');
   else res.end('OK');
-}).listen(PORT, () => console.log(`Server on ${PORT}`));
+}).listen(PORT, () => console.log(`Server on ${PORT} — waiting for WhatsApp connection...`));
 
 startBot();
