@@ -243,8 +243,8 @@ async function startBot() {
       if (chosen) {
         conv.lang = chosen;
         conversationMemory.set(sender, conv); saveMemory();
-        reply = chosen === 'telugu' ? 'Namaste! Sri Sai Properties. Meeru em kavali?'
-             : chosen === 'hindi' ? 'Namaste! Sri Sai Properties. Aapko kya chahiye?'
+        reply = chosen === 'telugu' ? 'Namaskaram! Sri Sai Properties. Meeru elaanti property kosam chustunnaru?'
+             : chosen === 'hindi' ? 'Namaste! Sri Sai Properties. Aap kaise property dhundh rahe hain?'
              : 'Hello! Sri Sai Properties. How can I help you today?';
         await sendMsg(sock, sender, { text: reply });
         return;
@@ -263,8 +263,8 @@ async function startBot() {
 
     if (!reply) {
       if (['hi', 'hello', 'hey', 'namaste'].some(w => lower.startsWith(w) || lower.includes(' ' + w))) {
-        reply = conv.lang === 'telugu' ? 'Namaste! Sri Sai Properties. Meeru em kavali?'
-             : conv.lang === 'hindi' ? 'Namaste! Sri Sai Properties. Aapko kya chahiye?'
+        reply = conv.lang === 'telugu' ? 'Namaskaram! Sri Sai Properties. Meeru elaanti property kosam chustunnaru?'
+             : conv.lang === 'hindi' ? 'Namaste! Sri Sai Properties. Aap kaise property dhundh rahe hain?'
              : 'Hello! Sri Sai Properties. How can I help you today?';
       } else if (lower.includes('agent') || lower.includes('call')) {
         reply = conv.lang === 'telugu' ? 'Maa agent call chestaru. Time cheppandi.'
