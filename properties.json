@@ -1,0 +1,12 @@
+[
+  {"name":"Aparna Elita","bhk":"2BHK","size":"1280 sqft","price":"₹89L","status":"Ready","area":"Gachibowli","budget":"under1cr"},
+  {"name":"Lodha Meridian","bhk":"2BHK","size":"1150 sqft","price":"₹78L","status":"Ready","area":"Tellapur","budget":"under1cr"},
+  {"name":"Prestige High Fields","bhk":"2BHK","size":"1190 sqft","price":"₹82L","status":"Ready","area":"Tellapur","budget":"under1cr"},
+  {"name":"KNR Greenville","bhk":"2BHK","size":"1350 sqft","price":"₹92L","status":"Ready","area":"Gachibowli","budget":"under1cr"},
+  {"name":"My Home Vihanga","bhk":"3BHK","size":"1650 sqft","price":"₹1.45Cr","status":"Dec 2026","area":"Kokapet","budget":"1to2cr"},
+  {"name":"Rajapushpa Provincia","bhk":"3BHK","size":"1800 sqft","price":"₹1.6Cr","status":"Mar 2027","area":"Nallagandla","budget":"over1cr"},
+  {"name":"Godrej Ananda","bhk":"3BHK","size":"1725 sqft","price":"₹1.55Cr","status":"Jun 2027","area":"Kokapet","budget":"1to2cr"},
+  {"name":"Sai Residency","bhk":"2BHK","size":"1050 sqft","price":"₹68L","status":"Ready","area":"Kondapur","budget":"under1cr"},
+  {"name":"Sri Lakshmi Towers","bhk":"3BHK","size":"1550 sqft","price":"₹1.25Cr","status":"Aug 2026","area":"Manikonda","budget":"1to2cr"},
+  {"name":"Vishnu Heights","bhk":"2BHK","size":"1100 sqft","price":"₹72L","status":"Ready","area":"Miyapur","budget":"under1cr"}
+]

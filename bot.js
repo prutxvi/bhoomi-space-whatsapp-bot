@@ -9,20 +9,40 @@ const http = require('http');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-const PROPERTY_IMAGES = {
-  'Aparna Elita':        __dirname + '/images/aparna-elita.jpg',
-  'Lodha Meridian':      __dirname + '/images/lodha-meridian.jpg',
-  'Prestige High Fields':__dirname + '/images/prestige-high-fields.jpg',
-  'KNR Greenville':      __dirname + '/images/knr-greenville.jpg',
-  'My Home Vihanga':     __dirname + '/images/my-home-vihanga.jpg',
-  'Rajapushpa Provincia':__dirname + '/images/rajapushpa-provincia.jpg',
-  'Godrej Ananda':       __dirname + '/images/godrej-ananda.jpg',
-  'Sai Residency':       __dirname + '/images/sai-residency.jpg',
-  'Sri Lakshmi Towers':  __dirname + '/images/sri-lakshmi-towers.jpg',
-  'Vishnu Heights':      __dirname + '/images/vishnu-heights.jpg',
-};
+function buildPropList(ps) {
+  return ps.map(p => `🏠 ${p.name} — ${p.bhk}, ${p.size}, ${p.price}, ${p.status}, ${p.area}`).join('\n');
+}
+function buildBudgetRanges(ps) {
+  const under = ps.filter(p => p.budget === 'under1cr').map(p => p.name).join(', ');
+  const mid = ps.filter(p => p.budget === '1to2cr').map(p => p.name).join(', ');
+  const over = ps.filter(p => p.budget === 'over1cr').map(p => p.name).join(', ');
+  let s = '';
+  if (under) s += `- Under ₹1Cr: ${under}\n`;
+  if (mid) s += `- ₹1Cr-₹2Cr: ${mid}\n`;
+  if (over) s += `- Over ₹2Cr: ${over}\n`;
+  return s;
+}
 
-const SYSTEM_PROMPT = `You are "Sri Sai Properties" — a real estate WhatsApp assistant in Hyderabad.
+function loadProperties() {
+  try {
+    return JSON.parse(fs.readFileSync(__dirname + '/properties.json', 'utf8'));
+  } catch(e) { return []; }
+}
+
+function buildImageMap(props) {
+  const m = {};
+  props.forEach(p => {
+    const fname = p.name.toLowerCase().replace(/\s+/g, '-') + '.jpg';
+    m[p.name] = __dirname + '/images/' + fname;
+  });
+  return m;
+}
+
+function getSystemPrompt() {
+  const props = loadProperties();
+  const propList = buildPropList(props);
+  const budgetRanges = buildBudgetRanges(props);
+  return `You are "Sri Sai Properties" — a real estate WhatsApp assistant in Hyderabad.
 
 BEHAVE NATURALLY:
 - Be friendly and helpful like a local agent.
@@ -47,28 +67,16 @@ IMPORTANT:
 - Remember what they said. Don't repeat questions.
 
 AVAILABLE PROPERTIES:
-🏠 Aparna Elita — 2BHK, 1280 sqft, ₹89L, Ready, Gachibowli
-🏠 Lodha Meridian — 2BHK, 1150 sqft, ₹78L, Ready, Tellapur
-🏠 Prestige High Fields — 2BHK, 1190 sqft, ₹82L, Ready, Tellapur
-🏠 KNR Greenville — 2BHK, 1350 sqft, ₹92L, Ready, Gachibowli
-🏠 My Home Vihanga — 3BHK, 1650 sqft, ₹1.45Cr, Dec 2026, Kokapet
-🏠 Rajapushpa Provincia — 3BHK, 1800 sqft, ₹1.6Cr, Mar 2027, Nallagandla
-🏠 Godrej Ananda — 3BHK, 1725 sqft, ₹1.55Cr, Jun 2027, Kokapet
-🏠 Sai Residency — 2BHK, 1050 sqft, ₹68L, Ready, Kondapur
-🏠 Sri Lakshmi Towers — 3BHK, 1550 sqft, ₹1.25Cr, Aug 2026, Manikonda
-🏠 Vishnu Heights — 2BHK, 1100 sqft, ₹72L, Ready, Miyapur
+${propList}
 
-BUDGET RANGES (use these to match):
-- Under ₹80L: Sai Residency, Vishnu Heights
-- ₹80L-₹1Cr: Aparna Elita, Lodha Meridian, Prestige High Fields, KNR Greenville
-- ₹1Cr-₹2Cr: My Home Vihanga, Godrej Ananda, Rajapushpa Provincia, Sri Lakshmi Towers
-- Over ₹2Cr: Rajapushpa Provincia, Godrej Ananda
-
+BUDGET RANGES:
+${budgetRanges}
 AREA INFO:
 - Gachibowli: IT hub, 2BHK from ₹78L, good for families
 - Kokapet: Premium area, 3BHK from ₹1.45Cr
 - Tellapur: Affordable, 2BHK from ₹78L, upcoming area
 - Nallagandla: New development, connected to ORR`;
+}
 
 let conversationMemory = new Map();
 const MEMORY_FILE = __dirname + '/memory.json';
@@ -92,7 +100,7 @@ async function getAIReply(userMessage, lang = 'english', history = []) {
     : lang === 'hindi' ? 'IMPORTANT: Always reply in HINDI (हिंदी). Use Devanagari script. Be natural.'
     : 'IMPORTANT: Reply in ENGLISH. Be conversational.';
   const messages = [
-    { role: 'system', content: SYSTEM_PROMPT + '\n' + langInstruction },
+    { role: 'system', content: getSystemPrompt() + '\n' + langInstruction },
     ...history.slice(-MAX_HISTORY),
     { role: 'user', content: userMessage }
   ];
@@ -297,7 +305,8 @@ async function startBot() {
     if (needsImage) {
       if (!conv.sentImages) conv.sentImages = [];
       await sock.sendPresenceUpdate('composing', sender).catch(() => {});
-      for (const [propName, imgPath] of Object.entries(PROPERTY_IMAGES)) {
+      const propImages = buildImageMap(loadProperties());
+      for (const [propName, imgPath] of Object.entries(propImages)) {
         if (conv.sentImages.includes(propName)) continue;
         const mentionedInReply = reply.toLowerCase().includes(propName.toLowerCase());
         const mentionedInConv = conv.messages.some(m => m.content.toLowerCase().includes(propName.toLowerCase()));
@@ -341,6 +350,77 @@ const PORT = process.env.PORT || 3000;
 http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const qrFile = __dirname + '/qr.txt';
+
+  // --- Properties API ---
+  if (url.pathname === '/api/properties') {
+    const key = url.searchParams.get('key') || '';
+    if (key !== (process.env.ADMIN_KEY || 'admin123')) {
+      res.writeHead(401); res.end('Unauthorized'); return;
+    }
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', c => body += c);
+      req.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          fs.writeFileSync(__dirname + '/properties.json', JSON.stringify(data, null, 2));
+          res.writeHead(200, {'Content-Type': 'application/json'});
+          res.end(JSON.stringify({ok:true}));
+        } catch(e) { res.writeHead(400); res.end('Invalid JSON'); }
+      });
+      return;
+    }
+    const props = loadProperties();
+    res.writeHead(200, {'Content-Type': 'application/json'});
+    res.end(JSON.stringify(props));
+    return;
+  }
+
+  // --- Admin Page ---
+  if (url.pathname === '/admin') {
+    const key = url.searchParams.get('key') || '';
+    const validKey = process.env.ADMIN_KEY || 'admin123';
+    const authed = key === validKey;
+    res.writeHead(200, {'Content-Type': 'text/html'});
+    res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Property Admin</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,sans-serif;background:#f5f5f5;padding:20px}h1{color:#075e54;margin-bottom:20px}.card{background:#fff;padding:20px;border-radius:12px;box-shadow:0 1px 8px rgba(0,0,0,.08);margin-bottom:20px;overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:14px}th{background:#075e54;color:#fff;padding:10px 8px;text-align:left}td{padding:8px;border-bottom:1px solid #eee}input,select{width:100%;padding:6px;border:1px solid #ddd;border-radius:6px;font-size:13px}.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600}.btn-primary{background:#075e54;color:#fff}.btn-danger{background:#dc3545;color:#fff}.btn-sm{padding:4px 10px;font-size:12px}.actions{display:flex;gap:8px;align-items:center}.login{max-width:400px;margin:100px auto;text-align:center}.login input{width:100%;padding:10px;margin:10px 0;border:1px solid #ddd;border-radius:8px;font-size:16px}.login button{width:100%;padding:10px;background:#075e54;color:#fff;border:none;border-radius:8px;font-size:16px;cursor:pointer}.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}.badge-green{background:#e8f5e9;color:#2e7d32}.badge-yellow{background:#fff8e1;color:#f57f17}.add-form{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-bottom:16px}.add-form input,.add-form select{width:100%}.save-bar{position:sticky;bottom:0;background:#075e54;color:#fff;padding:12px 20px;border-radius:12px;display:flex;justify-content:space-between;align-items:center;margin-top:20px;display:none}.save-bar .btn{background:#fff;color:#075e54}</style></head><body>
+${!authed ? `
+<div class="login"><h1>🔐 Admin Login</h1><form method="get" action="/admin"><input type="password" name="key" placeholder="Enter admin key"/><button type="submit">Login</button></form></div>` : `
+<h1>🏠 Property Management</h1>
+<div class="card"><h3 style="margin-bottom:12px">Add Property</h3>
+<div class="add-form">
+<input id="newName" placeholder="Name"/>
+<select id="newBhk"><option value="1BHK">1BHK</option><option value="2BHK" selected>2BHK</option><option value="3BHK">3BHK</option><option value="4BHK">4BHK</option></select>
+<input id="newSize" placeholder="Size (e.g. 1280 sqft)"/>
+<input id="newPrice" placeholder="Price (e.g. ₹89L)"/>
+<input id="newStatus" placeholder="Status (e.g. Ready)"/>
+<input id="newArea" placeholder="Area (e.g. Gachibowli)"/>
+<select id="newBudget"><option value="under1cr">Under ₹1Cr</option><option value="1to2cr">₹1Cr-₹2Cr</option><option value="over1cr">Over ₹2Cr</option></select>
+<button class="btn btn-primary" onclick="addProp()">+ Add</button>
+</div></div>
+<div class="card"><table><thead><tr><th>Name</th><th>BHK</th><th>Size</th><th>Price</th><th>Status</th><th>Area</th><th>Budget</th><th></th></tr></thead><tbody id="propTable"></tbody></table></div>
+<div class="save-bar" id="saveBar"><span id="saveStatus">Unsaved changes</span><button class="btn" onclick="saveAll()">💾 Save Changes</button></div>
+<script>
+let props = [];
+async function load(){const r=await fetch('/api/properties?key=${key}');props=await r.json();render();}
+function render(){const t=document.getElementById('propTable');t.innerHTML=props.map((p,i)=>'<tr>'+
+'<td><input value="'+p.name.replace(/"/g,'&quot;')+'" onchange="edit('+i+',\'name\',this.value)"/></td>'+
+'<td><select onchange="edit('+i+',\'bhk\',this.value)"><option value="1BHK"'+(p.bhk==='1BHK'?' selected':'')+'>1BHK</option><option value="2BHK"'+(p.bhk==='2BHK'?' selected':'')+'>2BHK</option><option value="3BHK"'+(p.bhk==='3BHK'?' selected':'')+'>3BHK</option><option value="4BHK"'+(p.bhk==='4BHK'?' selected':'')+'>4BHK</option></select></td>'+
+'<td><input value="'+p.size+'" onchange="edit('+i+',\'size\',this.value)"/></td>'+
+'<td><input value="'+p.price.replace(/"/g,'&quot;')+'" onchange="edit('+i+',\'price\',this.value)"/></td>'+
+'<td><input value="'+p.status+'" onchange="edit('+i+',\'status\',this.value)"/></td>'+
+'<td><input value="'+p.area+'" onchange="edit('+i+',\'area\',this.value)"/></td>'+
+'<td><select onchange="edit('+i+',\'budget\',this.value)"><option value="under1cr"'+(p.budget==='under1cr'?' selected':'')+'>Under ₹1Cr</option><option value="1to2cr"'+(p.budget==='1to2cr'?' selected':'')+'>₹1Cr-₹2Cr</option><option value="over1cr"'+(p.budget==='over1cr'?' selected':'')+'>Over ₹2Cr</option></select></td>'+
+'<td><button class="btn btn-danger btn-sm" onclick="delProp('+i+')">✕</button></td></tr>').join('');
+document.getElementById('saveBar').style.display=props.some(p=>p._dirty)?'flex':'none';}
+function edit(i,k,v){props[i][k]=v;props[i]._dirty=true;render();}
+function delProp(i){props.splice(i,1);render();}
+function addProp(){const n=i=>document.getElementById(i).value;props.push({name:n('newName'),bhk:n('newBhk'),size:n('newSize'),price:n('newPrice'),status:n('newStatus'),area:n('newArea'),budget:n('newBudget'),_dirty:true});['newName','newSize','newPrice','newStatus','newArea'].forEach(i=>document.getElementById(i).value='');render();}
+async function saveAll(){const b=document.getElementById('saveStatus');b.textContent='Saving...';const r=await fetch('/api/properties?key=${key}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(props.map(p=>({name:p.name,bhk:p.bhk,size:p.size,price:p.price,status:p.status,area:p.area,budget:p.budget})))});const d=await r.json();if(d.ok){props.forEach(p=>delete p._dirty);b.textContent='✅ Saved!';setTimeout(()=>b.textContent='',2000);render();}else{b.textContent='❌ Save failed';}}
+load();
+</script>`}
+</body></html>`);
+    return;
+  }
 
   // --- Status Endpoint ---
   if (url.pathname === '/status') {
