@@ -5,7 +5,7 @@ const qrcode = require('qrcode-terminal');
 const { Groq } = require('groq-sdk');
 const pino = require('pino');
 const fs = require('fs');
-const http = require('http');
+const express = require('express');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -345,44 +345,68 @@ async function startBot() {
   });
 }
 
-// HTTP server for Railway
+// Express server for Railway
+const app = express();
+app.use(express.json());
 const PORT = process.env.PORT || 3000;
-http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://localhost:${PORT}`);
-  const qrFile = __dirname + '/qr.txt';
 
-  // --- Properties API ---
-  if (url.pathname === '/api/properties') {
-    const key = url.searchParams.get('key') || '';
-    if (key !== (process.env.ADMIN_KEY || 'admin123')) {
-      res.writeHead(401); res.end('Unauthorized'); return;
+const { sendProjectAssets, validatePhone } = require('./routes/sendProject');
+
+// --- New API: Send Project Assets via WhatsApp ---
+app.post('/api/send-project', async (req, res) => {
+  try {
+    const { phone, project } = req.body;
+    if (!phone || !project) {
+      return res.status(400).json({ success: false, message: 'Missing required fields: phone, project' });
     }
-    if (req.method === 'POST') {
-      let body = '';
-      req.on('data', c => body += c);
-      req.on('end', () => {
-        try {
-          const data = JSON.parse(body);
-          fs.writeFileSync(__dirname + '/properties.json', JSON.stringify(data, null, 2));
-          res.writeHead(200, {'Content-Type': 'application/json'});
-          res.end(JSON.stringify({ok:true}));
-        } catch(e) { res.writeHead(400); res.end('Invalid JSON'); }
-      });
-      return;
+    const validPhone = validatePhone(phone);
+    if (!validPhone) {
+      return res.status(400).json({ success: false, message: 'Invalid phone number' });
     }
-    const props = loadProperties();
-    res.writeHead(200, {'Content-Type': 'application/json'});
-    res.end(JSON.stringify(props));
-    return;
+    const sock = global.__sock;
+    if (!sock) {
+      return res.status(503).json({ success: false, message: 'WhatsApp not connected' });
+    }
+    const result = await sendProjectAssets(sock, validPhone, project);
+    if (result.success) {
+      return res.json(result);
+    }
+    return res.status(404).json(result);
+  } catch (e) {
+    console.error('Send project error:', e);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
   }
+});
 
-  // --- Admin Page ---
-  if (url.pathname === '/admin') {
-    const key = url.searchParams.get('key') || '';
-    const validKey = process.env.ADMIN_KEY || 'admin123';
-    const authed = key === validKey;
-    res.writeHead(200, {'Content-Type': 'text/html'});
-    res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Property Admin</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,sans-serif;background:#f5f5f5;padding:20px}h1{color:#075e54;margin-bottom:20px}.card{background:#fff;padding:20px;border-radius:12px;box-shadow:0 1px 8px rgba(0,0,0,.08);margin-bottom:20px;overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:14px}th{background:#075e54;color:#fff;padding:10px 8px;text-align:left}td{padding:8px;border-bottom:1px solid #eee}input,select{width:100%;padding:6px;border:1px solid #ddd;border-radius:6px;font-size:13px}.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600}.btn-primary{background:#075e54;color:#fff}.btn-danger{background:#dc3545;color:#fff}.btn-sm{padding:4px 10px;font-size:12px}.actions{display:flex;gap:8px;align-items:center}.login{max-width:400px;margin:100px auto;text-align:center}.login input{width:100%;padding:10px;margin:10px 0;border:1px solid #ddd;border-radius:8px;font-size:16px}.login button{width:100%;padding:10px;background:#075e54;color:#fff;border:none;border-radius:8px;font-size:16px;cursor:pointer}.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}.badge-green{background:#e8f5e9;color:#2e7d32}.badge-yellow{background:#fff8e1;color:#f57f17}.add-form{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-bottom:16px}.add-form input,.add-form select{width:100%}.save-bar{position:sticky;bottom:0;background:#075e54;color:#fff;padding:12px 20px;border-radius:12px;display:flex;justify-content:space-between;align-items:center;margin-top:20px;display:none}.save-bar .btn{background:#fff;color:#075e54}</style></head><body>
+// --- Properties API ---
+app.get('/api/properties', (req, res) => {
+  const key = req.query.key || '';
+  if (key !== (process.env.ADMIN_KEY || 'admin123')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  res.json(loadProperties());
+});
+
+app.post('/api/properties', (req, res) => {
+  const key = req.query.key || '';
+  if (key !== (process.env.ADMIN_KEY || 'admin123')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    fs.writeFileSync(__dirname + '/properties.json', JSON.stringify(req.body, null, 2));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: 'Invalid data' });
+  }
+});
+
+// --- Admin Page ---
+app.get('/admin', (req, res) => {
+  const key = req.query.key || '';
+  const validKey = process.env.ADMIN_KEY || 'admin123';
+  const authed = key === validKey;
+  res.type('html');
+  res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Property Admin</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,sans-serif;background:#f5f5f5;padding:20px}h1{color:#075e54;margin-bottom:20px}.card{background:#fff;padding:20px;border-radius:12px;box-shadow:0 1px 8px rgba(0,0,0,.08);margin-bottom:20px;overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:14px}th{background:#075e54;color:#fff;padding:10px 8px;text-align:left}td{padding:8px;border-bottom:1px solid #eee}input,select{width:100%;padding:6px;border:1px solid #ddd;border-radius:6px;font-size:13px}.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600}.btn-primary{background:#075e54;color:#fff}.btn-danger{background:#dc3545;color:#fff}.btn-sm{padding:4px 10px;font-size:12px}.actions{display:flex;gap:8px;align-items:center}.login{max-width:400px;margin:100px auto;text-align:center}.login input{width:100%;padding:10px;margin:10px 0;border:1px solid #ddd;border-radius:8px;font-size:16px}.login button{width:100%;padding:10px;background:#075e54;color:#fff;border:none;border-radius:8px;font-size:16px;cursor:pointer}.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}.badge-green{background:#e8f5e9;color:#2e7d32}.badge-yellow{background:#fff8e1;color:#f57f17}.add-form{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-bottom:16px}.add-form input,.add-form select{width:100%}.save-bar{position:sticky;bottom:0;background:#075e54;color:#fff;padding:12px 20px;border-radius:12px;display:flex;justify-content:space-between;align-items:center;margin-top:20px;display:none}.save-bar .btn{background:#fff;color:#075e54}</style></head><body>
 ${!authed ? `
 <div class="login"><h1>🔐 Admin Login</h1><form method="get" action="/admin"><input type="password" name="key" placeholder="Enter admin key"/><button type="submit">Login</button></form></div>` : `
 <h1>🏠 Property Management</h1>
@@ -419,54 +443,116 @@ async function saveAll(){const b=document.getElementById('saveStatus');b.textCon
 load();
 </script>`}
 </body></html>`);
-    return;
-  }
+});
 
-  // --- Status Endpoint ---
-  if (url.pathname === '/status') {
-    const connected = !!(global.__sock && global.__sock.user);
-    res.writeHead(200, {'Content-Type': 'application/json'});
-    res.end(JSON.stringify({ status: connected ? 'connected' : 'disconnected', phone: connected ? global.__sock.user.id?.split(':')[0] || 'unknown' : null }));
-    return;
-  }
+// --- Status Endpoint ---
+app.get('/status', (req, res) => {
+  const connected = !!(global.__sock && global.__sock.user);
+  res.json({ status: connected ? 'connected' : 'disconnected', phone: connected ? global.__sock.user.id?.split(':')[0] || 'unknown' : null });
+});
 
-  // --- Pairing Code Endpoint ---
-  if (url.pathname === '/pair') {
-    const phone = url.searchParams.get('phone');
-    if (!phone) {
-      res.writeHead(200, {'Content-Type': 'text/html'});
-      res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{margin:0;padding:16px;font-family:sans-serif}input,button{font-size:18px;padding:10px;border:2px solid #ddd;border-radius:8px}button{background:#25D366;color:#fff;border:none;cursor:pointer}form{display:flex;gap:10px;max-width:400px;flex-wrap:wrap}</style></head><body><h3>WhatsApp Pairing</h3><form method="get" action="/pair"><input type="tel" name="phone" placeholder="91XXXXXXXXXX" required/><button type="submit">Get Code</button></form><p style="margin-top:12px;color:#666;font-size:13px">Enter your WhatsApp number with country code (without +)</p></body></html>`);
-      return;
-    }
-    try {
-      const sock = global.__sock;
-      if (!sock) { res.end('Bot not ready. Wait 10 seconds and refresh.'); return; }
-      const code = await sock.requestPairingCode(phone);
-      const display = typeof code === 'string' ? code.match(/.{1,4}/g)?.join('-') || code : code;
-      res.writeHead(200, {'Content-Type': 'text/html'});
-      res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#f0faf0;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:sans-serif;text-align:center;flex-direction:column;padding:20px}.card{background:#fff;padding:30px;border-radius:16px;box-shadow:0 2px 24px rgba(0,0,0,.1);max-width:400px}.code{font-size:42px;font-weight:700;letter-spacing:6px;color:#075e54;background:#e8f5e9;padding:20px;border-radius:12px;margin:15px 0;font-family:monospace}.step{color:#333;font-size:15px;margin:6px 0}.num{color:#999;font-size:13px;margin-top:15px}</style></head><body><div class="card"><h2 style="color:#075e54">Pairing Code</h2><div class="code">${display}</div><p class="step">1️⃣ Open WhatsApp on your phone</p><p class="step">2️⃣ Settings → <b>Linked Devices</b></p><p class="step">3️⃣ Tap <b>Link a Device</b></p><p class="step">4️⃣ Enter this code</p><p class="num">Phone: ${phone} · Code expires in 2 minutes</p></div></body></html>`);
-    } catch (e) {
-      res.writeHead(200, {'Content-Type': 'text/html'});
-      res.end(`Error: ${e.message}. Try again in 10 seconds.`);
-    }
-    return;
+// --- Pairing Code Endpoint ---
+app.get('/pair', async (req, res) => {
+  const phone = req.query.phone;
+  if (!phone) {
+    res.type('html');
+    return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{margin:0;padding:16px;font-family:sans-serif}input,button{font-size:18px;padding:10px;border:2px solid #ddd;border-radius:8px}button{background:#25D366;color:#fff;border:none;cursor:pointer}form{display:flex;gap:10px;max-width:400px;flex-wrap:wrap}</style></head><body><h3>WhatsApp Pairing</h3><form method="get" action="/pair"><input type="tel" name="phone" placeholder="91XXXXXXXXXX" required/><button type="submit">Get Code</button></form><p style="margin-top:12px;color:#666;font-size:13px">Enter your WhatsApp number with country code (without +)</p></body></html>`);
   }
+  try {
+    const sock = global.__sock;
+    if (!sock) { return res.send('Bot not ready. Wait 10 seconds and refresh.'); }
+    const code = await sock.requestPairingCode(phone);
+    const display = typeof code === 'string' ? code.match(/.{1,4}/g)?.join('-') || code : code;
+    res.type('html');
+    res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#f0faf0;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:sans-serif;text-align:center;flex-direction:column;padding:20px}.card{background:#fff;padding:30px;border-radius:16px;box-shadow:0 2px 24px rgba(0,0,0,.1);max-width:400px}.code{font-size:42px;font-weight:700;letter-spacing:6px;color:#075e54;background:#e8f5e9;padding:20px;border-radius:12px;margin:15px 0;font-family:monospace}.step{color:#333;font-size:15px;margin:6px 0}.num{color:#999;font-size:13px;margin-top:15px}</style></head><body><div class="card"><h2 style="color:#075e54">Pairing Code</h2><div class="code">${display}</div><p class="step">1️⃣ Open WhatsApp on your phone</p><p class="step">2️⃣ Settings → <b>Linked Devices</b></p><p class="step">3️⃣ Tap <b>Link a Device</b></p><p class="step">4️⃣ Enter this code</p><p class="num">Phone: ${phone} · Code expires in 2 minutes</p></div></body></html>`);
+  } catch (e) {
+    res.type('html');
+    res.send(`Error: ${e.message}. Try again in 10 seconds.`);
+  }
+});
 
-  // --- QR Endpoint ---
-  if (url.pathname === '/qr' && fs.existsSync(qrFile)) {
-    const qrData = fs.readFileSync(qrFile, 'utf8').trim();
-    if (qrData) {
-      QR.toDataURL(qrData, { width: 500, margin: 4, color: { dark: '#000000', light: '#ffffff' }, errorCorrectionLevel: 'L' }, (err, url) => {
-        if (err) { res.writeHead(200, {'Content-Type': 'text/html'}); res.end('QR error'); return; }
-        res.writeHead(200, {'Content-Type': 'text/html'});
-        res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:system-ui,sans-serif;padding:10px}.q{background:#fff;padding:20px;border-radius:12px;box-shadow:0 0 0 3px #000;max-width:340px;width:100%;text-align:center}img{width:100%;height:auto;max-width:280px;display:block;margin:0 auto}h3{font-size:16px;margin:16px 0 4px;color:#111}p{font-size:13px;color:#555;margin:2px 0}</style></head><body><div class="q"><img src="${url}" alt="QR"/><h3>Scan this QR with WhatsApp</h3><p>Open WhatsApp → Linked Devices → Link a Device</p></div></body></html>`);
-      });
-      return;
-    }
+// --- QR Endpoint (raw JSON or image) ---
+app.get('/qr', (req, res) => {
+  const qrFile = __dirname + '/qr.txt';
+  const format = req.query.format || 'html';
+  if (!fs.existsSync(qrFile)) {
+    if (format === 'json') return res.json({ qr: null, message: 'QR generating...' });
+    return res.type('html').send('QR generating... Refresh.');
   }
-  res.writeHead(200, {'Content-Type': 'text/html'});
-  if (url.pathname === '/qr') res.end('QR generating... Refresh.');
-  else res.end('OK');
-}).listen(PORT, () => console.log(`Server on ${PORT} — waiting for WhatsApp connection...`));
+  const qrData = fs.readFileSync(qrFile, 'utf8').trim();
+  if (!qrData) {
+    if (format === 'json') return res.json({ qr: null, message: 'QR generating...' });
+    return res.type('html').send('QR generating... Refresh.');
+  }
+  if (format === 'json') return res.json({ qr: qrData });
+
+  QR.toDataURL(qrData, { width: 500, margin: 4, color: { dark: '#000000', light: '#ffffff' }, errorCorrectionLevel: 'L' }, (err, url) => {
+    if (err) { return res.type('html').send('QR error'); }
+    res.type('html');
+    res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><meta http-equiv="refresh" content="10"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:system-ui,sans-serif;padding:10px}.q{background:#fff;padding:20px;border-radius:12px;box-shadow:0 0 0 3px #000;max-width:340px;width:100%;text-align:center}img{width:100%;height:auto;max-width:280px;display:block;margin:0 auto}h3{font-size:16px;margin:16px 0 4px;color:#111}p{font-size:13px;color:#555;margin:2px 0}</style></head><body><div class="q"><img src="${url}" alt="QR"/><h3>Scan this QR with WhatsApp</h3><p>Open WhatsApp → Linked Devices → Link a Device</p><p style="margin-top:12px;font-size:11px;color:#999">Auto-refreshes every 10s</p></div></body></html>`);
+  });
+});
+
+// --- Landing Page ---
+app.get('/', (req, res) => {
+  const connected = !!(global.__sock && global.__sock.user);
+  const phone = connected ? global.__sock.user.id?.split(':')[0] || 'unknown' : null;
+  const qrFile = __dirname + '/qr.txt';
+  const hasQR = fs.existsSync(qrFile) && fs.readFileSync(qrFile, 'utf8').trim().length > 0;
+
+  res.type('html');
+  res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Bhoomi Space - WhatsApp Bot</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,sans-serif;background:#f0faf0;min-height:100vh;display:flex;justify-content:center;align-items:center;padding:20px}.card{background:#fff;border-radius:16px;box-shadow:0 2px 24px rgba(0,0,0,.1);max-width:420px;width:100%;padding:32px;text-align:center}h1{color:#075e54;font-size:24px;margin-bottom:4px}.sub{color:#666;font-size:14px;margin-bottom:24px}.status{padding:12px 16px;border-radius:10px;font-size:14px;font-weight:600;margin-bottom:20px}.connected{background:#e8f5e9;color:#2e7d32}.disconnected{background:#fff3e0;color:#e65100}.qr-box{background:#f9f9f9;border-radius:12px;padding:20px;margin-bottom:16px}.qr-box img{width:220px;height:220px;display:block;margin:0 auto 12px}.qr-box p{font-size:13px;color:#555;margin-bottom:4px}.pair-form{display:flex;gap:8px;margin-top:16px}.pair-form input{flex:1;padding:10px 14px;border:2px solid #ddd;border-radius:8px;font-size:14px;outline:none}.pair-form input:focus{border-color:#25D366}.pair-form button{padding:10px 20px;background:#25D366;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}.pair-form button:hover{background:#1da851}.links{margin-top:20px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap}.links a{color:#075e54;text-decoration:none;font-size:13px;padding:6px 14px;border:1px solid #075e54;border-radius:8px}.links a:hover{background:#075e54;color:#fff}.badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600;margin-top:16px}.badge-green{background:#e8f5e9;color:#2e7d32}.badge-red{background:#ffebee;color:#c62828}.api-endpoint{background:#f5f5f5;border-radius:8px;padding:8px 12px;font-family:monospace;font-size:12px;color:#333;margin-top:12px;text-align:left}.api-endpoint code{color:#075e54}</style></head><body>
+<div class="card">
+  <h1>🏡 Bhoomi Space</h1>
+  <p class="sub">WhatsApp Bot</p>
+
+  <div class="status ${connected ? 'connected' : 'disconnected'}">
+    ${connected ? '✅ Connected — ' + phone : '❌ Not connected'}
+  </div>
+
+  ${!connected && hasQR ? `
+  <div class="qr-box">
+    <img src="/qr" alt="QR Code"/>
+    <p>1. Open WhatsApp on your phone</p>
+    <p>2. Settings → <b>Linked Devices</b></p>
+    <p>3. Tap <b>Link a Device</b></p>
+    <p style="font-size:11px;color:#999;margin-top:8px">Page refreshes automatically every 10s</p>
+  </div>
+  ` : !connected ? `
+  <div class="qr-box">
+    <p style="color:#999;padding:20px 0">⏳ Waiting for QR code...</p>
+    <p style="font-size:12px;color:#999">Page refreshes automatically</p>
+  </div>
+  ` : ''}
+
+  ${!connected ? `
+  <div style="border-top:1px solid #eee;padding-top:16px;margin-top:4px">
+    <p style="font-size:13px;color:#666;margin-bottom:8px">Or use pairing code:</p>
+    <form class="pair-form" action="/pair" method="get">
+      <input type="tel" name="phone" placeholder="91XXXXXXXXXX" required/>
+      <button type="submit">Get Code</button>
+    </form>
+  </div>
+  ` : ''}
+
+  <div class="links">
+    <a href="/status">📊 Status</a>
+    <a href="/admin?key=${process.env.ADMIN_KEY || ''}">⚙️ Admin</a>
+  </div>
+
+  <div class="api-endpoint">
+    <div style="font-weight:600;margin-bottom:4px">📡 API Endpoint</div>
+    <code>POST /api/send-project</code>
+  </div>
+
+  <div class="badge ${connected ? 'badge-green' : 'badge-red'}">
+    ${connected ? 'Bot is live' : 'Awaiting login'}
+  </div>
+</div>
+<meta http-equiv="refresh" content="10">
+</body></html>`);
+});
+
+app.listen(PORT, () => console.log(`Server on ${PORT} — waiting for WhatsApp connection...`));
 
 startBot();
