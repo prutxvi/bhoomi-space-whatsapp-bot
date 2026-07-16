@@ -359,6 +359,30 @@ const PORT = process.env.PORT || 3000;
 
 const { sendProjectAssets, validatePhone } = require('./routes/sendProject');
 
+// --- Debug: Send simple text ---
+app.post('/api/send-text', async (req, res) => {
+  try {
+    const { phone, message } = req.body;
+    if (!phone || !message) {
+      return res.status(400).json({ success: false, message: 'Missing phone or message' });
+    }
+    const digits = phone.replace(/\D/g, '');
+    const fullPhone = digits.length > 10 ? digits : '91' + digits;
+    const jid = `${fullPhone}@s.whatsapp.net`;
+    const sock = global.__sock;
+    if (!sock) {
+      return res.status(503).json({ success: false, message: 'WhatsApp not connected' });
+    }
+    console.log(`[send-text] Sending to ${jid}: "${message.slice(0,50)}"`);
+    await sock.sendMessage(jid, { text: message });
+    console.log(`[send-text] Successfully sent to ${jid}`);
+    return res.json({ success: true, jid });
+  } catch (e) {
+    console.error('[send-text] Error:', e);
+    return res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 // --- New API: Send Project Assets via WhatsApp ---
 app.post('/api/send-project', async (req, res) => {
   try {
