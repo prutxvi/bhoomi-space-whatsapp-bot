@@ -188,8 +188,12 @@ async function startBot() {
       global.__sock = null;
       const isLoggedOut = lastDisconnect?.error?.output?.statusCode === DisconnectReason.loggedOut;
       if (isLoggedOut) {
-        try { fs.rmSync(__dirname + '/auth_info', { recursive: true, force: true }); } catch(e) {}
-        console.log('\n🔄 Auth expired — clearing session, new QR generated.\n');
+        try {
+          const authDir = __dirname + '/auth_info';
+          if (fs.existsSync(authDir + '/creds.json')) fs.unlinkSync(authDir + '/creds.json');
+          fs.readdirSync(authDir).forEach(f => { if (f.endsWith('.json')) fs.unlinkSync(authDir + '/' + f); });
+        } catch(e) {}
+        console.log('\n🔄 Auth expired — cleared session, new QR generated.\n');
       }
       qrShown = false;
       startBot();
