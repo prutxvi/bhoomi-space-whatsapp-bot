@@ -185,13 +185,9 @@ async function startBot() {
       try { fs.unlinkSync(__dirname + '/qr.txt'); } catch(e) {}
     }
     if (connection === 'close') {
-      const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-      if (shouldReconnect) {
-        qrShown = false;
-        startBot();
-      } else {
-        console.log('\n❌ BOT LOGGED OUT! Scan QR again to restart.\n');
-      }
+      global.__sock = null;
+      qrShown = false;
+      startBot();
     }
   });
 
@@ -448,7 +444,7 @@ load();
 // --- Status Endpoint ---
 app.get('/status', (req, res) => {
   const connected = !!(global.__sock && global.__sock.user);
-  res.json({ status: connected ? 'connected' : 'disconnected', phone: connected ? global.__sock.user.id?.split(':')[0] || 'unknown' : null });
+  res.json({ status: connected ? 'connected' : 'disconnected', phone: connected ? global.__sock.user.id?.split(':')[0]?.split('@')[0] || 'unknown' : null });
 });
 
 // --- Pairing Code Endpoint ---
