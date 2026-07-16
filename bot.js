@@ -193,10 +193,12 @@ async function startBot() {
           if (fs.existsSync(authDir + '/creds.json')) fs.unlinkSync(authDir + '/creds.json');
           fs.readdirSync(authDir).forEach(f => { if (f.endsWith('.json')) fs.unlinkSync(authDir + '/' + f); });
         } catch(e) {}
-        console.log('\n🔄 Auth expired — cleared session, new QR generated.\n');
+        console.log('\n🔄 Auth expired — cleared session, new QR will generate in 5 seconds.\n');
+        setTimeout(() => { qrShown = false; startBot(); }, 5000);
+      } else {
+        qrShown = false;
+        startBot();
       }
-      qrShown = false;
-      startBot();
     }
   });
 
@@ -483,7 +485,7 @@ app.get('/qr.png', (req, res) => {
   const qrData = fs.readFileSync(qrFile, 'utf8').trim();
   if (!qrData) return res.status(404).type('png').end();
 
-  QR.toBuffer(qrData, { width: 300, margin: 2, color: { dark: '#000000', light: '#ffffff' } }, (err, buffer) => {
+  QR.toBuffer(qrData, { width: 512, margin: 4, scale: 8, color: { dark: '#000000', light: '#ffffff' }, errorCorrectionLevel: 'M' }, (err, buffer) => {
     if (err) return res.status(500).type('png').end();
     res.type('png').send(buffer);
   });
