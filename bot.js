@@ -370,11 +370,13 @@ app.post('/api/send-project', async (req, res) => {
     if (!validPhone) {
       return res.status(400).json({ success: false, message: 'Invalid phone number' });
     }
+    const digits = phone.replace(/\D/g, '');
+    const fullPhone = digits.length > 10 ? digits : '91' + digits;
     const sock = global.__sock;
     if (!sock) {
       return res.status(503).json({ success: false, message: 'WhatsApp not connected' });
     }
-    const result = await sendProjectAssets(sock, validPhone, project);
+    const result = await sendProjectAssets(sock, fullPhone, project);
     if (result.success) {
       return res.json(result);
     }
