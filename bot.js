@@ -186,6 +186,11 @@ async function startBot() {
     }
     if (connection === 'close') {
       global.__sock = null;
+      const isLoggedOut = lastDisconnect?.error?.output?.statusCode === DisconnectReason.loggedOut;
+      if (isLoggedOut) {
+        try { fs.rmSync(__dirname + '/auth_info', { recursive: true, force: true }); } catch(e) {}
+        console.log('\n🔄 Auth expired — clearing session, new QR generated.\n');
+      }
       qrShown = false;
       startBot();
     }
@@ -467,20 +472,26 @@ app.get('/pair', async (req, res) => {
   }
 });
 
-// --- QR Endpoint (raw JSON or image) ---
+// --- QR Image (raw PNG for img tags) ---
+app.get('/qr.png', (req, res) => {
+  const qrFile = __dirname + '/qr.txt';
+  if (!fs.existsSync(qrFile)) return res.status(404).type('png').end();
+  const qrData = fs.readFileSync(qrFile, 'utf8').trim();
+  if (!qrData) return res.status(404).type('png').end();
+
+  QR.toBuffer(qrData, { width: 300, margin: 2, color: { dark: '#000000', light: '#ffffff' } }, (err, buffer) => {
+    if (err) return res.status(500).type('png').end();
+    res.type('png').send(buffer);
+  });
+});
+
+// --- QR Page (full HTML page for direct visit) ---
 app.get('/qr', (req, res) => {
   const qrFile = __dirname + '/qr.txt';
-  const format = req.query.format || 'html';
-  if (!fs.existsSync(qrFile)) {
-    if (format === 'json') return res.json({ qr: null, message: 'QR generating...' });
-    return res.type('html').send('QR generating... Refresh.');
-  }
-  const qrData = fs.readFileSync(qrFile, 'utf8').trim();
+  const qrData = fs.existsSync(qrFile) ? fs.readFileSync(qrFile, 'utf8').trim() : '';
   if (!qrData) {
-    if (format === 'json') return res.json({ qr: null, message: 'QR generating...' });
-    return res.type('html').send('QR generating... Refresh.');
+    return res.type('html').send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="5"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:system-ui,sans-serif;padding:20px;text-align:center}.card{background:#f9f9f9;padding:40px;border-radius:16px;max-width:340px;width:100%}p{color:#999;font-size:14px}</style></head><body><div class="card"><p>⏳ Waiting for QR code...</p><p style="font-size:11px;margin-top:12px">Auto-refreshes every 5s</p></div></body></html>`);
   }
-  if (format === 'json') return res.json({ qr: qrData });
 
   QR.toDataURL(qrData, { width: 500, margin: 4, color: { dark: '#000000', light: '#ffffff' }, errorCorrectionLevel: 'L' }, (err, url) => {
     if (err) { return res.type('html').send('QR error'); }
@@ -508,7 +519,7 @@ app.get('/', (req, res) => {
 
   ${!connected && hasQR ? `
   <div class="qr-box">
-    <img src="/qr" alt="QR Code"/>
+    <img src="/qr.png" alt="QR Code"/>
     <p>1. Open WhatsApp on your phone</p>
     <p>2. Settings → <b>Linked Devices</b></p>
     <p>3. Tap <b>Link a Device</b></p>
